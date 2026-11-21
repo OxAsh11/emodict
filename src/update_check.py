@@ -4,7 +4,7 @@ tray notifies. Never downloads anything by itself."""
 import json
 import urllib.request
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 # Becomes live the day the repo exists; until then every check 404s silently.
 UPDATE_URL = "https://raw.githubusercontent.com/OxAsh11/emodict/main/VERSION.txt"
 

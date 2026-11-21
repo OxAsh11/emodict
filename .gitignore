@@ -8,3 +8,4 @@ build/
 dist/
 run.py.bak
 installer-output/
+build.log
