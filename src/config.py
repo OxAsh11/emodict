@@ -12,6 +12,8 @@ class Config:
     device: str = "auto"               # auto -> cuda if available else cpu
     compute_type: str = "auto"         # auto -> int8_float16 on cuda, int8 on cpu
     language: str = "en"
+    beam_size: int = 1                 # 1 = fast decode; short dictation clips
+                                       # lose ~nothing vs 5, and gain ~30% speed
 
     # Hotkey (push-to-talk)
     hold_key: str = "right ctrl"       # keyboard-library key name

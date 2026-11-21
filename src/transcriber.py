@@ -63,8 +63,11 @@ def _cuda_available() -> bool:
 
 class Transcriber:
     def __init__(self, model_size: str = "small", device: str = "auto",
-                 compute_type: str = "auto", language: str = "en"):
+                 compute_type: str = "auto", language: str = "en",
+                 beam_size: int = 1):
         from faster_whisper import WhisperModel
+
+        self.beam_size = beam_size
 
         if device == "auto":
             device = "cuda" if _cuda_available() else "cpu"
@@ -88,7 +91,7 @@ class Transcriber:
         segments_iter, info = self.model.transcribe(
             audio,
             language=self.language,
-            beam_size=5,
+            beam_size=self.beam_size,
             vad_filter=True,
             word_timestamps=False,
         )

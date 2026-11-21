@@ -41,7 +41,8 @@ class App:
         self._hotkeys_bound = False
 
         print("[app] loading model...", flush=True)
-        self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type, cfg.language)
+        self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type,
+                               cfg.language, cfg.beam_size)
         print(f"[app] STT ready: model={cfg.model_size} device={self.stt.device} "
               f"compute={self.stt.compute_type}", flush=True)
         self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=False)
@@ -197,7 +198,8 @@ class App:
             try:
                 print(f"[app] reloading model -> {self.cfg.model_size}...", flush=True)
                 self.stt = Transcriber(self.cfg.model_size, self.cfg.device,
-                                       self.cfg.compute_type, self.cfg.language)
+                                       self.cfg.compute_type, self.cfg.language,
+                                       self.cfg.beam_size)
                 print(f"[app] model ready (device={self.stt.device})", flush=True)
             except Exception as e:  # noqa: BLE001 - keep dictating on the old model
                 print(f"[app] model reload FAILED ({e}); keeping previous model", flush=True)
