@@ -14,11 +14,11 @@ Two tracks. Track A = the shippable local product (priority: one download, basic
 
 ## TRACK A: shippable local product (priority)
 
-### A1. First-run experience (next up)
-- [ ] Model auto-download with visible progress (never silent, never freezing)
-- [ ] Hardware probe on first launch: GPU/CPU/RAM -> auto-pick model (GPU: large-v3-turbo; CPU: small), show what and why
-- [ ] Mic check: list devices, level meter, warn if absent
-- [ ] Settings live in %APPDATA% (survives updates)
+### A1. First-run experience (DONE 2026-11-21)
+- [x] Model auto-download with visible progress (HF hub progress; first fetch verified: large-v3-turbo in 323s)
+- [x] Hardware probe on first launch: GPU/CPU/RAM -> auto-pick model (verified: RTX 3050 6GB -> large-v3-turbo)
+- [x] Mic check: list devices (verified, 9 inputs listed); level meter code shipped, live test pending user run
+- [x] Settings live in %APPDATA%/EmoDict/settings.json + user-editable dictionary copy
 
 ### A2. Settings window (the "basic settings" a user needs)
 - [ ] Small window (tkinter/customtkinter): hotkey, model, mic, inject mode, tone tags on/off, start-with-Windows
@@ -64,4 +64,6 @@ Bugs found and fixed during verification:
 2. dictionary replace without word boundaries ("FLYT based" -> "Flytbased") -> \b-anchored regex
 3. ctypes 64-bit pointer truncation in clipboard code (access violation) -> explicit restype/argtypes prototypes
 Clipboard round-trip test: set_ok=True, roundtrip_ok=True, restored=True (no paste sent during test).
+2026-11-21 (A1): first-run wizard VERIFIED scripted (--yes --skip-meter). Probe: RTX 3050 6GB, 12 cores, 15.7GB RAM -> large-v3-turbo. Model download+load 323s. Settings + dictionary persisted to %APPDATA%\EmoDict. main.py auto-runs wizard when settings absent; load_settings() returns persisted model.
+Re-test with large-v3-turbo on the same wav: 10.8s audio -> 3.2s transcription (3.4x real-time). Note: turbo drops punctuation on TTS audio (periods missing); sentence-case has nothing to key on. Known limitation -> LLM cleanup (B2) or punctuation post-pass; not chased now.
 

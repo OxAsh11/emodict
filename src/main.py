@@ -116,7 +116,15 @@ class App:
 
 
 def main() -> int:
-    cfg = Config()
+    from . import settings_store
+    from .wizard import run_wizard
+
+    if settings_store.settings_exist():
+        cfg = settings_store.load_settings()
+    else:
+        print("[app] no settings found, starting first-run setup\n")
+        cfg = run_wizard(auto_yes="--yes" in sys.argv)
+
     if "--no-inject" in sys.argv:  # end-to-end run without pasting anywhere
         cfg.inject_mode = "none"
     if "--dry" in sys.argv:
