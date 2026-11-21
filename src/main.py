@@ -33,6 +33,7 @@ class App:
         self._loading_model = False
         self.recorder = None          # created after model load (persistent stream)
         self.root = None          # set by run(); tkinter main thread
+        self.overlay = None       # set by run(); recording indicator
         self.tray = None          # set by run()
         self._settings_win = None
         self._worker: threading.Thread | None = None
@@ -82,6 +83,7 @@ class App:
 
     # ---- worker ------------------------------------------------------------
     def _dispatch(self) -> None:
+        self._overlay_show("processing")
         audio = self.recorder.stop()
         if self.shutdown.is_set():  # quit began while recording: drop the take
             return
@@ -110,12 +112,14 @@ class App:
             inject(text, dry_run=True)
         else:
             print(f"[app] inject_mode={mode}, not injecting")
+        self._overlay_hide()
 
     def on_press(self, event) -> None:
         if self.shutdown.is_set() or self.paused or self._loading_model:
             return
         if self.recorder is not None and not self.recorder.recording:
             self.recorder.start()
+            self._overlay_show("recording")
             print("[app] recording...", flush=True)
 
     def on_release(self, event) -> None:
@@ -123,6 +127,15 @@ class App:
             return
         self._worker = threading.Thread(target=self._dispatch, daemon=True)
         self._worker.start()
+
+    # ---- overlay (visible feedback while dictating) ---------------------------
+    def _overlay_show(self, state: str) -> None:
+        if self.overlay is not None and self.root is not None:
+            self.root.after(0, lambda: self.overlay.show(state))
+
+    def _overlay_hide(self) -> None:
+        if self.overlay is not None and self.root is not None:
+            self.root.after(0, self.overlay.hide)
 
     # ---- hotkey binding ------------------------------------------------------
     def _bind_hotkey(self) -> None:
@@ -263,7 +276,10 @@ class App:
 
         self.root = tk.Tk()
         self.root.withdraw()
+        from .overlay import RecordingOverlay
         from .tray import Tray
+
+        self.overlay = RecordingOverlay(self.root)
 
         self.tray = Tray(on_settings=self.open_settings,
                          on_toggle_pause=self.toggle_pause,
@@ -295,18 +311,27 @@ class App:
             self._worker.join(timeout=10)
         if self.tray is not None:
             self.tray.stop()
+        self._overlay_hide()
         print("[app] stopped clean; no injection can happen after this point.")
 
 
 def main() -> int:
     from . import settings_store
-    from .wizard import run_wizard
+
+    use_gui_wizard = getattr(sys, "frozen", False) or sys.stdin is None
 
     if settings_store.settings_exist():
         cfg = settings_store.load_settings()
     else:
-        print("[app] no settings found, starting first-run setup\n")
-        cfg = run_wizard(auto_yes="--yes" in sys.argv)
+        print("[app] no settings found, starting first-run setup\n", flush=True)
+        if use_gui_wizard:  # packaged build: console input() would EOF-crash
+            from .wizard_gui import run_wizard_gui
+
+            cfg = run_wizard_gui(auto_yes="--yes" in sys.argv)
+        else:
+            from .wizard import run_wizard
+
+            cfg = run_wizard(auto_yes="--yes" in sys.argv)
 
     if "--no-inject" in sys.argv:  # end-to-end run without pasting anywhere
         cfg.inject_mode = "none"
