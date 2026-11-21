@@ -22,6 +22,7 @@ def run_selftest() -> int:
     from . import settings_store
     from .cleanup import Cleaner
     from .config import Config
+    from .emotion import EmotionAnalyzer
     from .recorder import load_audio_file
     from .transcriber import Transcriber
 
@@ -49,5 +50,31 @@ def run_selftest() -> int:
     print(f"[selftest] output: {output}")
 
     ok = "dictation" in output.lower() and "pipeline" in output.lower()
-    print(f"[selftest] {'PASS' if ok else 'FAIL'}")
-    return 0 if ok else 1
+    print(f"[selftest] STT {'PASS' if ok else 'FAIL'}")
+
+    # Emotion fork: run when funasr is importable (bundled builds and venv)
+    emo_ok = None
+    try:
+        import funasr  # noqa: F401
+
+        have_funasr = True
+    except ImportError:
+        have_funasr = False
+    if have_funasr:
+        t0 = time.perf_counter()
+        analyzer = EmotionAnalyzer(cfg.emotion_model, enabled=True)
+        if analyzer.enabled:
+            spans = analyzer.analyze(audio, 16000, segments)
+            dt = time.perf_counter() - t0
+            labels = {s["label"] for s in spans}
+            print(f"[selftest] emotion: {len(spans)} spans in {dt:.1f}s, "
+                  f"labels={sorted(labels)}")
+            emo_ok = len(spans) > 0
+        else:
+            print("[selftest] emotion: model failed to load")
+            emo_ok = False
+    else:
+        print("[selftest] emotion: funasr not importable, skipped")
+
+    print(f"[selftest] emotion {'PASS' if emo_ok else 'FAIL' if emo_ok is not None else 'SKIPPED'}")
+    return 0 if (ok and emo_ok is not False) else 1

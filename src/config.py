@@ -31,8 +31,8 @@ class Config:
     dictionary_path: str = str(PROJECT_ROOT / "dictionary.json")
     show_tone_tags: bool = True        # global kill-switch for [tone: ...] output
 
-    # Emotion (Weekend 4)
-    emotion_enabled: bool = False      # flip after funasr is installed
+    # Emotion (the product thesis: tone tags on dictation output)
+    emotion_enabled: bool = True        # on by default; lazy background load
     emotion_model: str = "iic/emotion2vec_plus_base"
     tone_tag_threshold: float = 0.60   # below this, emit no tag
 
