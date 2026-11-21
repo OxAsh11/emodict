@@ -70,4 +70,9 @@ Clipboard round-trip test: set_ok=True, roundtrip_ok=True, restored=True (no pas
 Re-test with large-v3-turbo on the same wav: 10.8s audio -> 3.2s transcription (3.4x real-time). Note: turbo drops punctuation on TTS audio (periods missing); sentence-case has nothing to key on. Known limitation -> LLM cleanup (B2) or punctuation post-pass; not chased now.
 2026-11-21: LIVE mic path user-verified (dry mode): takes of 0.53-2.01s end-to-end, large-v3-turbo on CUDA, cleanups applied. First real dictations logged.
 2026-11-21 (A2): smoke test 8/8 PASS (src.test_smoke): imports, dictionary text round-trip (skipped-line handling), settings round-trip incl. mic_device/show_tone_tags, APPDATA paths, startup vbs dry-run, tray icon+menu+pause state, real SettingsWindow built on withdrawn root with persisted values, dictionary editor content. Fixed during A2: pystray MenuItem.text is read-only -> dynamic label via callable.
+2026-11-21 (live-session fixes): user reported cut words + empty takes + model silently downgraded to small.
+Root causes + fixes, all verified:
+1. Smoke test clobbered real %APPDATA% settings (model small, mic 5, tags off) -> test now backs up/restores; user settings restored to large-v3-turbo.
+2. Per-take mic stream open costs 100-300ms on Windows and drops that audio -> Recorder v2: stream opened once at app start, pre-roll ring 0.3s, tail drain 0.2s on stop. Verified with real mic: 1.0s hold -> 1.27s capture, ring + drain working, settings intact after test.
+3. main.py: recorder is persistent (no per-press recreation), rebuilt only on mic change, closed on shutdown; guards for recorder=None.
 

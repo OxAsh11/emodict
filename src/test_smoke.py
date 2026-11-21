@@ -36,17 +36,24 @@ back, skipped = settings_store.text_to_dict(text + "\ngarbage line\n")
 check("dict_to_text/text_to_dict round-trip", back == d and skipped == 1,
       f"skipped={skipped}")
 
-# 3. settings save/load with new fields
-cfg = Config()
-cfg.mic_device = 5
-cfg.start_with_windows = False
-cfg.show_tone_tags = False
-settings_store.save_settings(cfg)
-loaded = settings_store.load_settings()
-check("settings round-trip (mic/startup/tone-tags)",
-      loaded.mic_device == 5 and loaded.show_tone_tags is False)
-check("settings paths point at APPDATA",
-      loaded.dictionary_path == str(settings_store.user_dictionary_path()))
+# 3. settings save/load with new fields  (backs up + restores the REAL user
+#    settings so this test never clobbers what the app saved)
+_sp = settings_store.settings_path()
+_backup = _sp.read_bytes() if _sp.exists() else None
+try:
+    cfg = Config()
+    cfg.mic_device = 5
+    cfg.start_with_windows = False
+    cfg.show_tone_tags = False
+    settings_store.save_settings(cfg)
+    loaded = settings_store.load_settings()
+    check("settings round-trip (mic/startup/tone-tags)",
+          loaded.mic_device == 5 and loaded.show_tone_tags is False)
+    check("settings paths point at APPDATA",
+          loaded.dictionary_path == str(settings_store.user_dictionary_path()))
+finally:
+    if _backup is not None:
+        _sp.write_bytes(_backup)
 
 # 4. startup vbs dry-run: never writes
 p = settings_store.set_start_with_windows(

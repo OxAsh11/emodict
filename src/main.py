@@ -31,7 +31,7 @@ class App:
         self.paused = False
         self._model_lock = threading.Lock()
         self._loading_model = False
-        self.recorder = Recorder(device=cfg.mic_device)
+        self.recorder = None          # created after model load (persistent stream)
         self.root = None          # set by run(); tkinter main thread
         self.tray = None          # set by run()
         self._settings_win = None
@@ -44,6 +44,12 @@ class App:
               f"compute={self.stt.compute_type}", flush=True)
         self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=cfg.emotion_enabled)
         self.cleaner = Cleaner(cfg)
+        try:
+            self.recorder = Recorder(device=cfg.mic_device)  # stream stays open
+            print("[app] mic stream open (persistent, pre-roll armed)", flush=True)
+        except Exception as e:  # noqa: BLE001 - app starts, hotkey will report
+            self.recorder = None
+            print(f"[app] MIC OPEN FAILED: {e}", flush=True)
 
     # ---- pipeline --------------------------------------------------------
     def process(self, audio) -> str | None:
@@ -94,13 +100,12 @@ class App:
     def on_press(self, event) -> None:
         if self.shutdown.is_set() or self.paused or self._loading_model:
             return
-        if not self.recorder.recording:
-            self.recorder = Recorder(device=self.cfg.mic_device)
+        if self.recorder is not None and not self.recorder.recording:
             self.recorder.start()
             print("[app] recording...", flush=True)
 
     def on_release(self, event) -> None:
-        if self.shutdown.is_set() or not self.recorder.recording:
+        if self.shutdown.is_set() or self.recorder is None or not self.recorder.recording:
             return
         self._worker = threading.Thread(target=self._dispatch, daemon=True)
         self._worker.start()
@@ -132,9 +137,19 @@ class App:
     def apply_settings(self, cfg: Config) -> None:
         """Live-apply what was saved: hotkey + mic + cleaner now, model async."""
         old_model = self.cfg.model_size
+        old_mic = self.cfg.mic_device
         self.cfg = cfg
         self.cleaner = Cleaner(cfg)
         self._bind_hotkey()  # rebinds with the (possibly new) key
+        if cfg.mic_device != old_mic:  # rebuild the persistent stream
+            old_recorder = self.recorder
+            try:
+                self.recorder = Recorder(device=cfg.mic_device)
+                if old_recorder is not None:
+                    old_recorder.close()
+                print("[app] mic stream rebuilt", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[app] mic switch FAILED ({e}); keeping old stream", flush=True)
         print(f"[app] settings applied (hotkey={cfg.hold_key}, mic={cfg.mic_device}, "
               f"inject={cfg.inject_mode})", flush=True)
         if cfg.model_size != old_model:
@@ -155,7 +170,7 @@ class App:
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
-        if self.paused and self.recorder.recording:
+        if self.paused and self.recorder is not None and self.recorder.recording:
             self.recorder.stop()
         if self.tray is not None:
             self.tray.set_paused(self.paused)
@@ -200,8 +215,10 @@ class App:
             keyboard.unhook_all()
         except Exception:  # noqa: BLE001
             pass
-        if self.recorder.recording:
-            self.recorder.stop()
+        if self.recorder is not None:
+            if self.recorder.recording:
+                self.recorder.stop()
+            self.recorder.close()
         if self._worker is not None and self._worker.is_alive():
             self._worker.join(timeout=10)
         if self.tray is not None:
