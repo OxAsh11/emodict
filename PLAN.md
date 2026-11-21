@@ -27,12 +27,17 @@ Two tracks. Track A = the shippable local product (priority: one download, basic
 - [x] Live-apply on save: hotkey rebind + mic + cleaner instant, model reload in background (keeps old model on failure)
 - [x] Start with Windows: .vbs in shell:startup (dry-run tested; never auto-created)
 
-### A3. Package as one download
-- [ ] PyInstaller onedir build (onedir over onefile: faster start, fewer antivirus false positives)
-- [ ] Bundle ctranslate2 + CUDA runtime + keyboard-hook deps; hidden-imports checklist
-- [ ] CPU build ~200MB zip: unzip -> EmoDict.exe -> hold Right-Ctrl; no Python, no venv, no terminal
-- [ ] Install test on a clean Windows user (the real gate)
-- [ ] Antivirus check; code-sign cert before public release
+### A3. Package as one download (BUILT + SELFTEST-VERIFIED 2026-11-21; friend install pending)
+- [x] PyInstaller onedir, windowed (tray app), UPX off (AV), logs to %LOCALAPPDATA%/EmoDict/logs
+- [x] EmoDict.spec: CPU build (285MB dir / 106MB zip) and GPU build EMO_BUILD_GPU=1 (2.2GB dir / 1.37GB zip, bundles cublas+cudnn+nvrtc)
+- [x] run.py entry + --selftest mode: full offline pipeline on bundled wav, exit code
+- [x] Fixed in packaging: silero VAD onnx missing (collect_data_files faster_whisper); CUDA chosen without runtime (lazy cublas load -> CDLL preflight check); frozen DLL dir layout nvidia/<pkg>/bin
+- [x] CPU exe selftest PASS (cpu int8, 13.3s transcribe); GPU exe selftest PASS (cuda int8_float16, 1.56s, ~8.5x faster)
+- [x] Clean-cache simulation PASS: empty HF_HOME -> exe downloaded its own model (54.9s), transcribed, exit 0
+- [x] Zips: dist/EmoDict-CPU-win64.zip (106MB), dist/EmoDict-GPU-win64.zip (1.37GB)
+- [ ] Real friend install: unzip on a machine that has never run the venv; run exe; wizard; dictate
+- [ ] Antivirus spot check on the zip/exe (Defender + one third-party); code-sign cert before public
+- [ ] One-page quickstart inside the zip
 
 ### A4. Beta hardening
 - [ ] Crash log to %LOCALAPPDATA% + friendly errors (never a bare traceback)
@@ -75,4 +80,10 @@ Root causes + fixes, all verified:
 1. Smoke test clobbered real %APPDATA% settings (model small, mic 5, tags off) -> test now backs up/restores; user settings restored to large-v3-turbo.
 2. Per-take mic stream open costs 100-300ms on Windows and drops that audio -> Recorder v2: stream opened once at app start, pre-roll ring 0.3s, tail drain 0.2s on stop. Verified with real mic: 1.0s hold -> 1.27s capture, ring + drain working, settings intact after test.
 3. main.py: recorder is persistent (no per-press recreation), rebuilt only on mic change, closed on shutdown; guards for recorder=None.
+2026-11-21 (A3): PyInstaller builds verified end-to-end by RUNNING the packaged exes.
+CPU exe: selftest PASS device=cpu int8, 10.8s wav -> 13.3s transcribe, 285MB dir, zip 106MB.
+GPU exe: selftest PASS device=cuda int8_float16, 1.56s transcribe (8.5x CPU), 2.2GB dir, zip 1.37GB.
+Clean-cache sim: empty HF_HOME -> exe downloaded model itself (54.9s), transcribed 1.05s, PASS.
+Packaging bugs fixed: (1) silero VAD onnx not collected -> collect_data_files("faster_whisper"); (2) driver present but no cublas made CPU builds pick cuda and die at first encode (lazy load past init fallback) -> _cuda_available now CDLL("cublas64_12.dll") preflight; (3) frozen nvidia DLL layout is nvidia/<pkg>/bin under _MEIPASS -> registered.
+Note: first GPU-build selftest ran on cpu because of (3); after fix, cuda verified. Quirk: base model spells "F-L-Y-T" on the TTS clip (model quirk, not pipeline).
 
