@@ -65,7 +65,7 @@ class Cleaner:
         return " ".join(parts)
 
     def _tag_for(self, seg: Segment, emotions: Optional[list[EmotionSpan]]) -> str:
-        if not emotions:
+        if not emotions or not getattr(self.cfg, "show_tone_tags", True):
             return ""
         best: Optional[EmotionSpan] = None
         for e in emotions:

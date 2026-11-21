@@ -20,10 +20,12 @@ Two tracks. Track A = the shippable local product (priority: one download, basic
 - [x] Mic check: list devices (verified, 9 inputs listed); level meter code shipped, live test pending user run
 - [x] Settings live in %APPDATA%/EmoDict/settings.json + user-editable dictionary copy
 
-### A2. Settings window (the "basic settings" a user needs)
-- [ ] Small window (tkinter/customtkinter): hotkey, model, mic, inject mode, tone tags on/off, start-with-Windows
-- [ ] Dictionary editor (add/remove corrections)
-- [ ] System tray (pystray): start/stop, settings, quit; close = hide to tray
+### A2. Settings window + tray (DONE 2026-11-21, live-use check pending user)
+- [x] Settings window (tkinter, stdlib): hotkey capture, model, mic, inject mode, tone tags, fillers, start-with-Windows (built + smoke-tested on real widgets)
+- [x] Dictionary editor with 'heard -> corrected' lines (round-trip verified)
+- [x] System tray (pystray): Settings / Pause-Resume / Quit, dynamic label, paused icon state
+- [x] Live-apply on save: hotkey rebind + mic + cleaner instant, model reload in background (keeps old model on failure)
+- [x] Start with Windows: .vbs in shell:startup (dry-run tested; never auto-created)
 
 ### A3. Package as one download
 - [ ] PyInstaller onedir build (onedir over onefile: faster start, fewer antivirus false positives)
@@ -66,4 +68,6 @@ Bugs found and fixed during verification:
 Clipboard round-trip test: set_ok=True, roundtrip_ok=True, restored=True (no paste sent during test).
 2026-11-21 (A1): first-run wizard VERIFIED scripted (--yes --skip-meter). Probe: RTX 3050 6GB, 12 cores, 15.7GB RAM -> large-v3-turbo. Model download+load 323s. Settings + dictionary persisted to %APPDATA%\EmoDict. main.py auto-runs wizard when settings absent; load_settings() returns persisted model.
 Re-test with large-v3-turbo on the same wav: 10.8s audio -> 3.2s transcription (3.4x real-time). Note: turbo drops punctuation on TTS audio (periods missing); sentence-case has nothing to key on. Known limitation -> LLM cleanup (B2) or punctuation post-pass; not chased now.
+2026-11-21: LIVE mic path user-verified (dry mode): takes of 0.53-2.01s end-to-end, large-v3-turbo on CUDA, cleanups applied. First real dictations logged.
+2026-11-21 (A2): smoke test 8/8 PASS (src.test_smoke): imports, dictionary text round-trip (skipped-line handling), settings round-trip incl. mic_device/show_tone_tags, APPDATA paths, startup vbs dry-run, tray icon+menu+pause state, real SettingsWindow built on withdrawn root with persisted values, dictionary editor content. Fixed during A2: pystray MenuItem.text is read-only -> dynamic label via callable.
 

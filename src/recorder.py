@@ -6,8 +6,9 @@ SAMPLE_RATE = 16000
 
 
 class Recorder:
-    def __init__(self, samplerate: int = SAMPLE_RATE):
+    def __init__(self, samplerate: int = SAMPLE_RATE, device: int = -1):
         self.samplerate = samplerate
+        self.device = None if device is None or device < 0 else device
         self._frames: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self.recording = False
@@ -21,7 +22,8 @@ class Recorder:
             self._frames.append(indata.copy())
 
         self._stream = sd.InputStream(
-            samplerate=self.samplerate, channels=1, dtype="float32", callback=callback
+            samplerate=self.samplerate, channels=1, dtype="float32",
+            callback=callback, device=self.device,
         )
         self._stream.start()
         self.recording = True
