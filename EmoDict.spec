@@ -8,7 +8,8 @@ from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
 gpu = os.environ.get("EMO_BUILD_GPU", "0") == "1"
 
 binaries = collect_dynamic_libs("ctranslate2")
-datas = [("tools/test_input.wav", "tools"), ("docs/QUICKSTART.md", "docs")]
+datas = [("tools/test_input.wav", "tools"), ("docs/QUICKSTART.md", "docs"),
+         ("assets/icon.ico", "assets")]
 # faster_whisper ships its Silero VAD onnx model as package data; without it
 # every transcribe() dies with NoSuchFile in the frozen build.
 datas += collect_data_files("faster_whisper", include_py_files=False)
@@ -39,6 +40,7 @@ exe = EXE(
     a.scripts,
     exclude_binaries=True,
     name="EmoDict",
+    icon="assets/icon.ico",
     debug=False,
     console=False,          # tray app; logs go to %LOCALAPPDATA%/EmoDict/logs
     disable_windowed_traceback=False,

@@ -21,9 +21,23 @@ class SettingsWindow:
         self.on_save = on_save
         self.win = tk.Toplevel(root)
         self.win.title("EmoDict Settings")
-        self.win.geometry("520x560")
+        self.win.geometry("520x600")
+        self._apply_icon()
         self.win.protocol("WM_DELETE_WINDOW", self.win.destroy)
         self._build()
+
+    def _apply_icon(self) -> None:
+        import sys
+        from pathlib import Path
+
+        icon = PROJECT_ROOT / "assets" / "icon.ico"
+        if not icon.exists():
+            icon = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT)) / "assets" / "icon.ico"
+        if icon.exists():
+            try:
+                self.win.iconbitmap(str(icon))
+            except Exception:  # noqa: BLE001 - cosmetic only
+                pass
 
     # ---- UI ------------------------------------------------------------------
     def _build(self) -> None:
