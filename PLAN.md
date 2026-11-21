@@ -10,31 +10,50 @@
 - [x] Offline test harness: Windows TTS wav -> full pipeline, no hotkey/injection
 - [x] Verified on real audio: see PLAN bottom for the run log
 
-## Weekend 2: quality
-- [ ] Upgrade model default to large-v3-turbo on CUDA (install nvidia-cublas-cu12, nvidia-cudnn-cu12)
-- [ ] Calibration: real mic latency measurement, hold-vs-toggle modes
-- [ ] Dictionary UI pass: log every dictation, mine corrections (history.log)
-- [ ] System tray (pystray) + pulsing overlay dot + hide-to-tray
+Two tracks. Track A = the shippable local product (priority: one download, basic settings, run). Track B = the differentiating intelligence. A1-A3 get a friend-installable build; everything else can follow.
 
-## Weekend 3: LLM cleanup
-- [ ] Ollama (llama3.2:3b, CPU) cleanup stage parallel to GPU STT
-- [ ] Prompt: punctuation, self-corrections ("Monday, no wait, Tuesday"), raw mode
-- [ ] AI-edit mode: select text + hold Right-Alt + speak instruction
-- [ ] Voice command: "scratch that" cancels take
+## TRACK A: shippable local product (priority)
 
-## Weekend 4: emotion layer
-- [ ] pip install funasr (+ torch) in the venv; load iic/emotion2vec_plus_base
-- [ ] Fork audio: emotion2vec per chunk, align to Whisper segment timestamps
-- [ ] Emit [tone: label, confidence] per segment; threshold 0.6, hysteresis on
-- [ ] Per-user calibration: label 50 own clips, bias classes (Indian-English baseline)
-- [ ] Dogfood: dictate to Hermes with tags on; measure whether responses change
+### A1. First-run experience (next up)
+- [ ] Model auto-download with visible progress (never silent, never freezing)
+- [ ] Hardware probe on first launch: GPU/CPU/RAM -> auto-pick model (GPU: large-v3-turbo; CPU: small), show what and why
+- [ ] Mic check: list devices, level meter, warn if absent
+- [ ] Settings live in %APPDATA% (survives updates)
 
-## Later: layer 3 + distribution
-- [ ] Emotion-to-action hooks (see thesis: frustration -> context re-retrieval)
-- [ ] Preference memory from delight signals, anti-sycophancy guards
-- [ ] Packaging: PyInstaller exe, Tier 1 local-first installer
-- [ ] Tier 2 serverless GPU backend (streaming during speech), Mumbai/Singapore region
-- [ ] Tier 3 WebGPU browser demo
+### A2. Settings window (the "basic settings" a user needs)
+- [ ] Small window (tkinter/customtkinter): hotkey, model, mic, inject mode, tone tags on/off, start-with-Windows
+- [ ] Dictionary editor (add/remove corrections)
+- [ ] System tray (pystray): start/stop, settings, quit; close = hide to tray
+
+### A3. Package as one download
+- [ ] PyInstaller onedir build (onedir over onefile: faster start, fewer antivirus false positives)
+- [ ] Bundle ctranslate2 + CUDA runtime + keyboard-hook deps; hidden-imports checklist
+- [ ] CPU build ~200MB zip: unzip -> EmoDict.exe -> hold Right-Ctrl; no Python, no venv, no terminal
+- [ ] Install test on a clean Windows user (the real gate)
+- [ ] Antivirus check; code-sign cert before public release
+
+### A4. Beta hardening
+- [ ] Crash log to %LOCALAPPDATA% + friendly errors (never a bare traceback)
+- [ ] Update check (prompt, not silent); one-page quickstart; 3-5 friend beta
+
+## TRACK B: intelligence (after A3, interleavable)
+
+### B1. Quality
+- [ ] Real mic latency calibration; hold vs toggle modes
+- [ ] Mine history.log for recurring mishearings -> dictionary suggestions
+
+### B2. LLM cleanup
+- [ ] Ollama (llama3.2:3b, CPU) cleanup parallel to STT; punctuation, self-corrections, raw mode
+- [ ] AI-edit mode (select text + hold Right-Alt + speak instruction)
+
+### B3. Emotion layer (the thesis)
+- [ ] emotion2vec fork aligned to Whisper timestamps; [tone: label, score], threshold 0.6
+- [ ] Per-user calibration (50 own clips, Indian-English baseline)
+- [ ] Packaged product: optional add-on download (keeps base installer small)
+- [ ] Dogfood vs Hermes; then emotion-to-action hooks + preference memory (anti-sycophancy guards)
+
+### B4. Cloud tier (only if users with weak hardware show up)
+- [ ] Thin-client streaming -> serverless GPU (Mumbai/Singapore), one warm instance; WebGPU demo page
 
 ## Run log
 2026-11-21: offline pipeline test VERIFIED. Model=base, device=cuda (RTX 3050), compute=int8_float16.
