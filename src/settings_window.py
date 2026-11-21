@@ -70,6 +70,9 @@ class SettingsWindow:
         self.tags_var = tk.BooleanVar(value=self.cfg.show_tone_tags)
         ttk.Checkbutton(f, text="Show tone tags [tone: ...] when emotion data exists",
                         variable=self.tags_var).pack(fill="x", **pad)
+        self.emotion_var = tk.BooleanVar(value=self.cfg.emotion_enabled)
+        ttk.Checkbutton(f, text="Analyze tone while dictating (emotion2vec, ~600MB one-time)",
+                        variable=self.emotion_var).pack(fill="x", **pad)
         self.fillers_var = tk.BooleanVar(value=self.cfg.strip_fillers)
         ttk.Checkbutton(f, text="Strip filler words (um, uh, hmm)",
                         variable=self.fillers_var).pack(fill="x", **pad)
@@ -143,6 +146,7 @@ class SettingsWindow:
             (k for k, label in INJECT_MODES if label == self.inject_var.get()),
             "clipboard")
         cfg.show_tone_tags = self.tags_var.get()
+        cfg.emotion_enabled = self.emotion_var.get()
         cfg.strip_fillers = self.fillers_var.get()
 
         dictionary, skipped = settings_store.text_to_dict(

@@ -42,7 +42,9 @@ class App:
         self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type, cfg.language)
         print(f"[app] STT ready: model={cfg.model_size} device={self.stt.device} "
               f"compute={self.stt.compute_type}", flush=True)
-        self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=cfg.emotion_enabled)
+        self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=False)
+        if cfg.emotion_enabled:  # big model: load off the startup path
+            threading.Thread(target=self._load_emotion, daemon=True).start()
         self.cleaner = Cleaner(cfg)
         try:
             self.recorder = Recorder(device=cfg.mic_device)  # stream stays open
@@ -146,6 +148,7 @@ class App:
         """Live-apply what was saved: hotkey + mic + cleaner now, model async."""
         old_model = self.cfg.model_size
         old_mic = self.cfg.mic_device
+        old_emotion = self.cfg.emotion_enabled
         self.cfg = cfg
         self.cleaner = Cleaner(cfg)
         self._bind_hotkey()  # rebinds with the (possibly new) key
@@ -162,6 +165,11 @@ class App:
               f"inject={cfg.inject_mode})", flush=True)
         if cfg.model_size != old_model:
             threading.Thread(target=self._reload_model, daemon=True).start()
+        if cfg.emotion_enabled and not old_emotion:
+            threading.Thread(target=self._load_emotion, daemon=True).start()
+        elif not cfg.emotion_enabled and old_emotion:
+            self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=False)
+            print("[app] emotion analysis off", flush=True)
 
     def _reload_model(self) -> None:
         with self._model_lock:
@@ -175,6 +183,16 @@ class App:
                 print(f"[app] model reload FAILED ({e}); keeping previous model", flush=True)
             finally:
                 self._loading_model = False
+
+    def _load_emotion(self) -> None:
+        t0 = time.perf_counter()
+        ea = EmotionAnalyzer(self.cfg.emotion_model, enabled=True)
+        if ea.enabled and not self.shutdown.is_set():
+            self.emotion = ea
+            print(f"[app] emotion model ready in {time.perf_counter()-t0:.1f}s "
+                  f"(tone tags live)", flush=True)
+        elif not ea.enabled:
+            print("[app] emotion model unavailable; tags stay off", flush=True)
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused

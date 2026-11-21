@@ -72,6 +72,9 @@ class Cleaner:
             overlap = min(seg["end"], e["end"]) - max(seg["start"], e["start"])
             if overlap > 0 and (best is None or e["score"] > best["score"]):
                 best = e
-        if best and best["score"] >= self.cfg.tone_tag_threshold:
+        if best and best["score"] >= self.cfg.tone_tag_threshold \
+                and best["label"] not in ("neutral", "other"):
+            # neutral/other above threshold = no signal; tagging every calm
+            # sentence [tone: neutral] is noise, not information
             return f"[tone: {best['label']}, {best['score']:.2f}]"
         return ""

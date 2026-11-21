@@ -39,9 +39,12 @@ Two tracks. Track A = the shippable local product (priority: one download, basic
 - [ ] Antivirus spot check on the zip/exe (Defender + one third-party); code-sign cert before public
 - [ ] One-page quickstart inside the zip
 
-### A4. Beta hardening
-- [ ] Crash log to %LOCALAPPDATA% + friendly errors (never a bare traceback)
-- [ ] Update check (prompt, not silent); one-page quickstart; 3-5 friend beta
+### A4. Beta hardening (DONE 2026-11-21)
+- [x] Crash log to %LOCALAPPDATA%/EmoDict/logs/crash.log; sys+thread excepthooks; dictation worker failures logged + skipped (never kills the app)
+- [x] Friendly fatal: startup errors -> crash.log + dialog (frozen), message not traceback
+- [x] Update check: prompt-only (repo VERSION.txt; silent until repo exists), tray item + startup notification
+- [x] One-page quickstart bundled in build (docs/QUICKSTART.md, in zip)
+- [ ] 3-5 friend beta + antivirus spot check (user's part; CPU zip ready)
 
 ## TRACK B: intelligence (after A3, interleavable)
 
@@ -53,11 +56,14 @@ Two tracks. Track A = the shippable local product (priority: one download, basic
 - [ ] Ollama (llama3.2:3b, CPU) cleanup parallel to STT; punctuation, self-corrections, raw mode
 - [ ] AI-edit mode (select text + hold Right-Alt + speak instruction)
 
-### B3. Emotion layer (the thesis)
-- [ ] emotion2vec fork aligned to Whisper timestamps; [tone: label, score], threshold 0.6
+### B3. Emotion layer (the thesis) - INTEGRATED + VERIFIED 2026-11-21
+- [x] emotion2vec (funasr, iic/emotion2vec_plus_base) fork aligned to Whisper timestamps
+- [x] [tone: label, score] tags; threshold 0.6; neutral/other suppressed (tagging calm speech is noise)
+- [x] Settings checkbox (lazy background load, ~600MB one-time); venv path verified on real audio: [tone: happy, 0.98] emitted
+- [ ] Dogfood live vs Hermes: dictate with tags on, check responses change
 - [ ] Per-user calibration (50 own clips, Indian-English baseline)
-- [ ] Packaged product: optional add-on download (keeps base installer small)
-- [ ] Dogfood vs Hermes; then emotion-to-action hooks + preference memory (anti-sycophancy guards)
+- [ ] Packaged product: emotion as optional add-on download (needs torch/funasr bundling decision; exe stays emotion-off for now)
+- [ ] Emotion-to-action hooks + preference memory (anti-sycophancy guards)
 
 ### B4. Cloud tier (only if users with weak hardware show up)
 - [ ] Thin-client streaming -> serverless GPU (Mumbai/Singapore), one warm instance; WebGPU demo page
@@ -86,4 +92,6 @@ GPU exe: selftest PASS device=cuda int8_float16, 1.56s transcribe (8.5x CPU), 2.
 Clean-cache sim: empty HF_HOME -> exe downloaded model itself (54.9s), transcribed 1.05s, PASS.
 Packaging bugs fixed: (1) silero VAD onnx not collected -> collect_data_files("faster_whisper"); (2) driver present but no cublas made CPU builds pick cuda and die at first encode (lazy load past init fallback) -> _cuda_available now CDLL("cublas64_12.dll") preflight; (3) frozen nvidia DLL layout is nvidia/<pkg>/bin under _MEIPASS -> registered.
 Note: first GPU-build selftest ran on cpu because of (3); after fix, cuda verified. Quirk: base model spells "F-L-Y-T" on the TTS clip (model quirk, not pipeline).
+2026-11-21 (A4): crash.py hooks + worker guard, friendly fatal dialog, update_check (silent no-op until repo), QUICKSTART.md bundled; CPU exe rebuilt + selftest PASS; smoke 8/8; crash-log write + update no-op verified.
+2026-11-21 (B3): emotion2vec INTEGRATED. Install: uv pip install torch (CPU index) + funasr. Model iic/emotion2vec_plus_base downloads from ModelScope (~577MB to ~/.cache/modelscope) on first use. Verified on real audio: segments -> [tone: happy, 0.98] tag emitted; neutral suppressed; analyze ~0.5s for 3 segments on CPU (RTF 0.144). Gotchas fixed: generate() needs ndarray input (list input dies with 'float' has no len()); labels are bilingual 'zh/en' -> split('/'); AutoModel(disable_update=True) to skip funasr phone-home; model load off the app-startup path (background thread). First-ever load took 259s including download; subsequent cached loads faster.
 

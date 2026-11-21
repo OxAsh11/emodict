@@ -19,6 +19,8 @@ def main() -> int:
     ap.add_argument("--wav", required=True)
     ap.add_argument("--model", default=None, help="override config model size")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--emotion", action="store_true",
+                    help="enable emotion2vec fork (tags appear per segment)")
     args = ap.parse_args()
 
     cfg = Config()
@@ -26,6 +28,8 @@ def main() -> int:
         cfg.model_size = args.model
     if args.device:
         cfg.device = args.device
+    if args.emotion:
+        cfg.emotion_enabled = True
 
     audio = load_audio_file(args.wav)
     print(f"[test] {args.wav}: {len(audio)/16000:.1f}s of 16kHz mono")

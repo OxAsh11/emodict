@@ -25,7 +25,9 @@ class EmotionAnalyzer:
             try:
                 from funasr import AutoModel
 
-                self.model = AutoModel(model=model_id)
+                # disable_update: funasr phones home to check its own version
+                # on every init; costs seconds and we never care
+                self.model = AutoModel(model=model_id, disable_update=True)
             except Exception as e:  # noqa: BLE001 - degrade, never block dictation
                 print(f"[emotion] disabled ({e.__class__.__name__}: {e})")
                 self.enabled = False
@@ -43,13 +45,17 @@ class EmotionAnalyzer:
             if i1 - i0 < sample_rate // 2:  # <0.5s, too short to judge
                 continue
             try:
-                res = self.model.generate(audio[i0:i1].tolist(), granularity="utterance", extract_embedding=False)
-                labels = res[0].get("labels") if res else None
-                scores = res[0].get("scores") if res else None
+                # ndarray in (NOT a list); labels come bilingual 'zh/en'
+                res = self.model.generate(
+                    audio[i0:i1], granularity="utterance", extract_embedding=False)
+                r = res[0] if res else {}
+                labels = [str(l).split("/")[-1] for l in r.get("labels", [])]
+                scores = [float(s) for s in r.get("scores", [])]
                 if labels and scores:
                     best = max(zip(labels, scores), key=lambda x: x[1])
-                    spans.append({"start": seg["start"], "end": seg["end"],
-                                  "label": best[0], "score": float(best[1])})
+                    if best[0] not in ("<unk>",):
+                        spans.append({"start": seg["start"], "end": seg["end"],
+                                      "label": best[0], "score": best[1]})
             except Exception as e:  # noqa: BLE001
                 print(f"[emotion] segment failed: {e}")
         return spans
