@@ -40,3 +40,7 @@ class Config:
 
     # Dashboard
     dashboard_port: int = 8417
+
+    # Onboarding: true right after first-run setup; the welcome card shows
+    # until the user's first successful dictation, then clears itself.
+    onboarding_pending: bool = False

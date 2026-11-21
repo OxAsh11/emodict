@@ -2,10 +2,15 @@
 
 Dictate anywhere on your PC, 100% locally. Nothing you say ever leaves your machine.
 
-## 1. First run
-Unzip anywhere (Desktop is fine) and double-click **EmoDict.exe**.
+## 1. Install
+**Recommended:** run `EmoDict-Setup.exe`. It installs EmoDict with a Start-menu
+entry and an uninstaller (Settings > Apps). During setup you can pick a desktop
+shortcut and "start with Windows".
 
-The first-run setup will:
+**Portable alternative:** unzip the zip anywhere (Desktop is fine) and
+double-click **EmoDict.exe**. No install, no admin.
+
+Either way, the first-run setup will:
 - check your hardware and download the right speech model (one time, 150MB-800MB; needs internet)
 - list your microphones and test one
 - save settings (you can change everything later from the tray)

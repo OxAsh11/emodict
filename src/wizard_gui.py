@@ -31,6 +31,7 @@ def _scripted_wizard() -> Config:
           f"(device={stt.device})")
     cfg = Config()
     cfg.model_size = model
+    cfg.onboarding_pending = True
     settings_store.save_settings(cfg)
     return cfg
 
@@ -150,6 +151,7 @@ class WizardGUI:
                                   f"{stt.device}). Saving settings..."))
             cfg = Config()
             cfg.model_size = self.model_var.get()
+            cfg.onboarding_pending = True
             settings_store.save_settings(cfg)
             self.cfg_done = cfg
             self.q.put(("done", None))

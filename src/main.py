@@ -35,6 +35,7 @@ class App:
         self.root = None          # set by run(); tkinter main thread
         self.overlay = None       # set by run(); recording indicator
         self.tray = None          # set by run()
+        self.welcome = None       # set by run(); first-run welcome card
         self._settings_win = None
         self._worker: threading.Thread | None = None
         self._hotkeys_bound = False
@@ -113,6 +114,8 @@ class App:
         else:
             print(f"[app] inject_mode={mode}, not injecting")
         self._overlay_hide()
+        if self.cfg.onboarding_pending and self.welcome is not None:
+            self.root.after(0, self.welcome.finish)
 
     def on_press(self, event) -> None:
         if self.shutdown.is_set() or self.paused or self._loading_model:
@@ -219,6 +222,16 @@ class App:
             self.tray.set_paused(self.paused)
         print(f"[app] {'paused' if self.paused else 'resumed'}", flush=True)
 
+    def _onboarding_done(self) -> None:
+        self.cfg.onboarding_pending = False
+        try:
+            from . import settings_store
+
+            settings_store.save_settings(self.cfg)
+            print("[app] onboarding complete (first dictation done)", flush=True)
+        except Exception as e:  # noqa: BLE001 - never block on a settings write
+            print(f"[app] could not clear onboarding flag: {e}", flush=True)
+
     # ---- dashboard -------------------------------------------------------------
     def open_dashboard(self) -> None:
         import webbrowser
@@ -289,6 +302,11 @@ class App:
         self.tray.start()
         self._bind_hotkey()
         threading.Thread(target=self._quiet_update_check, daemon=True).start()
+        if self.cfg.onboarding_pending:
+            from .welcome import WelcomeCard
+
+            self.welcome = WelcomeCard(self.root, on_finish=self._onboarding_done)
+            self.welcome.show()
         try:
             self.root.mainloop()
         finally:
