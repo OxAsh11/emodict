@@ -54,26 +54,29 @@ class App:
             print(f"[app] MIC OPEN FAILED: {e}", flush=True)
 
     # ---- pipeline --------------------------------------------------------
-    def process(self, audio) -> str | None:
+    def process(self, audio) -> tuple[str | None, list, list]:
+        """Returns (text, segments, emotions); logging happens in _dispatch
+        where the latency is known."""
         if audio is None or len(audio) == 0:
-            return None
+            return None, [], []
         segments = self.stt.transcribe(audio)
         if not segments:
-            return None
+            return None, [], []
         emotions = self.emotion.analyze(audio, 16000, segments)
         text = self.cleaner.format_output(segments, emotions)
-        self._log_take(segments, emotions, text)
-        return text or None
+        return (text or None), segments, emotions
 
-    def _log_take(self, segments, emotions, text: str) -> None:
+    def _log_take(self, segments, emotions, text: str, elapsed: float | None) -> None:
         if not self.cfg.log_takes:
             return
+        audio_s = sum(s["end"] - s["start"] for s in segments)
+        tags = [e["label"] for e in emotions]
         try:
             p = Path(self.cfg.history_path)
             with p.open("a", encoding="utf-8") as f:
                 f.write(f"{datetime.now().isoformat(timespec='seconds')} | "
-                        f"{sum(s['end'] - s['start'] for s in segments):.1f}s | "
-                        f"{[e['label'] for e in emotions]} | {text}\n")
+                        f"{f'{elapsed:.2f}' if elapsed is not None else 'FAIL'} | "
+                        f"{audio_s:.1f} | {tags} | {text}\n")
         except OSError as e:
             print(f"[app] history write failed: {e}")
 
@@ -84,7 +87,7 @@ class App:
             return
         t0 = time.perf_counter()
         try:
-            text = self.process(audio)
+            text, segments, emotions = self.process(audio)
         except Exception as e:  # noqa: BLE001 - one bad take never kills the app
             from .crash import log_exception
 
@@ -93,6 +96,7 @@ class App:
                   f"continuing - see crash.log", flush=True)
             return
         elapsed = time.perf_counter() - t0
+        self._log_take(segments, emotions, text or "", elapsed if text else None)
         if text is None:
             print(f"[app] nothing transcribed ({elapsed:.2f}s)")
             return
@@ -202,6 +206,19 @@ class App:
             self.tray.set_paused(self.paused)
         print(f"[app] {'paused' if self.paused else 'resumed'}", flush=True)
 
+    # ---- dashboard -------------------------------------------------------------
+    def open_dashboard(self) -> None:
+        import webbrowser
+
+        from . import dashboard
+        from .update_check import VERSION
+
+        url = dashboard.ensure_running(
+            self.cfg.history_path, self.cfg.dashboard_port,
+            model=self.cfg.model_size, device=self.stt.device, version=VERSION)
+        print(f"[app] dashboard: {url}", flush=True)
+        webbrowser.open(url)
+
     # ---- updates -------------------------------------------------------------
     def check_update_notify(self) -> None:
         from .update_check import check_for_update
@@ -251,6 +268,7 @@ class App:
         self.tray = Tray(on_settings=self.open_settings,
                          on_toggle_pause=self.toggle_pause,
                          on_update=self.check_update_notify,
+                         on_dashboard=self.open_dashboard,
                          on_quit=lambda: self.root.after(0, self.root.quit))
         self.tray.start()
         self._bind_hotkey()

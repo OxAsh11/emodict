@@ -37,3 +37,6 @@ class Config:
     # History
     log_takes: bool = True
     history_path: str = str(PROJECT_ROOT / "history.log")
+
+    # Dashboard
+    dashboard_port: int = 8417

@@ -17,7 +17,8 @@ def _make_icon_image(paused: bool = False) -> Image.Image:
 class Tray:
     """pystray wrapper. Menu: Settings, Pause/Resume, Quit."""
 
-    def __init__(self, on_settings, on_toggle_pause, on_quit, on_update=None):
+    def __init__(self, on_settings, on_toggle_pause, on_quit, on_update=None,
+                 on_dashboard=None):
         import pystray
         from pystray import Menu, MenuItem
 
@@ -36,6 +37,8 @@ class Tray:
         ]
         if on_update is not None:
             menu_items.append(MenuItem("Check for updates", self._update))
+        if on_dashboard is not None:
+            menu_items.append(MenuItem("Performance dashboard", self._dashboard))
         menu_items.append(MenuItem("Quit", self._quit))
 
         self.icon = pystray.Icon(
@@ -55,6 +58,10 @@ class Tray:
     def _update(self, icon=None, item=None):
         if self.on_update is not None:
             self.on_update()
+
+    def _dashboard(self, icon=None, item=None):
+        if self.on_dashboard is not None:
+            self.on_dashboard()
 
     def _quit(self, icon=None, item=None):
         self.on_quit()
