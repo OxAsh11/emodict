@@ -9,3 +9,5 @@ dist/
 run.py.bak
 installer-output/
 build.log
+dist-gpu/
+build-gpu.log

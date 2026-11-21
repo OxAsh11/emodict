@@ -24,7 +24,7 @@ PrivilegesRequired=lowest
 ; Unsigned beta: no signing. SmartScreen may warn on the downloader.
 
 [Files]
-Source: "dist\EmoDict-CPU\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "dist\EmoDict\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{group}\EmoDict"; Filename: "{app}\EmoDict.exe"
