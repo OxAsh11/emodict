@@ -23,10 +23,35 @@ def _redirect_stdout_when_frozen() -> None:
 
 if __name__ == "__main__":
     _redirect_stdout_when_frozen()
-    if "--selftest" in sys.argv:
-        from src.selftest import run_selftest
+    from src.crash import install_hooks, log_exception
 
-        raise SystemExit(run_selftest())
-    from src.main import main
+    install_hooks()
+    try:
+        if "--selftest" in sys.argv:
+            from src.selftest import run_selftest
 
-    raise SystemExit(main())
+            raise SystemExit(run_selftest())
+        from src.main import main
+
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001 - friendly fatal, never a silent vanish
+        p = log_exception("startup", e)
+        print(f"[fatal] {e.__class__.__name__}: {e}\n[fatal] log: {p}", flush=True)
+        if getattr(sys, "frozen", False):
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+
+                r = tk.Tk()
+                r.withdraw()
+                messagebox.showerror(
+                    "EmoDict",
+                    "EmoDict hit an error and will close.\n\n"
+                    f"{e.__class__.__name__}: {e}\n\n"
+                    f"Details saved to:\n{p}")
+                r.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+        raise SystemExit(1)

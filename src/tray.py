@@ -17,28 +17,32 @@ def _make_icon_image(paused: bool = False) -> Image.Image:
 class Tray:
     """pystray wrapper. Menu: Settings, Pause/Resume, Quit."""
 
-    def __init__(self, on_settings, on_toggle_pause, on_quit):
+    def __init__(self, on_settings, on_toggle_pause, on_quit, on_update=None):
         import pystray
         from pystray import Menu, MenuItem
 
-        self._pystray = pystray
         self.paused = False
         self.on_settings = on_settings
         self.on_toggle_pause = on_toggle_pause
         self.on_quit = on_quit
+        self.on_update = on_update
 
         def pause_label(item):
             return "Resume dictation" if self.paused else "Pause dictation"
+
+        menu_items = [
+            MenuItem("Settings", self._settings, default=True),
+            MenuItem(pause_label, self._toggle_pause),
+        ]
+        if on_update is not None:
+            menu_items.append(MenuItem("Check for updates", self._update))
+        menu_items.append(MenuItem("Quit", self._quit))
 
         self.icon = pystray.Icon(
             "EmoDict",
             icon=_make_icon_image(False),
             title="EmoDict - running",
-            menu=Menu(
-                MenuItem("Settings", self._settings, default=True),
-                MenuItem(pause_label, self._toggle_pause),
-                MenuItem("Quit", self._quit),
-            ),
+            menu=Menu(*menu_items),
         )
 
     # pystray passes (icon, item); our callbacks take nothing
@@ -47,6 +51,10 @@ class Tray:
 
     def _toggle_pause(self, icon=None, item=None):
         self.on_toggle_pause()
+
+    def _update(self, icon=None, item=None):
+        if self.on_update is not None:
+            self.on_update()
 
     def _quit(self, icon=None, item=None):
         self.on_quit()

@@ -81,7 +81,15 @@ class App:
         if self.shutdown.is_set():  # quit began while recording: drop the take
             return
         t0 = time.perf_counter()
-        text = self.process(audio)
+        try:
+            text = self.process(audio)
+        except Exception as e:  # noqa: BLE001 - one bad take never kills the app
+            from .crash import log_exception
+
+            log_exception("dictation worker", e)
+            print(f"[app] take failed ({e.__class__.__name__}: {e}); "
+                  f"continuing - see crash.log", flush=True)
+            return
         elapsed = time.perf_counter() - t0
         if text is None:
             print(f"[app] nothing transcribed ({elapsed:.2f}s)")
@@ -176,6 +184,32 @@ class App:
             self.tray.set_paused(self.paused)
         print(f"[app] {'paused' if self.paused else 'resumed'}", flush=True)
 
+    # ---- updates -------------------------------------------------------------
+    def check_update_notify(self) -> None:
+        from .update_check import check_for_update
+
+        avail, latest, current = check_for_update()
+        msg = (f"Update available: {latest} (you have {current})."
+               if avail else f"You're up to date ({current}).")
+        print(f"[app] {msg}", flush=True)
+        if self.tray is not None:
+            try:
+                self.tray.icon.notify(msg, "EmoDict")
+            except Exception:  # noqa: BLE001 - notifications can be disabled
+                pass
+
+    def _quiet_update_check(self) -> None:
+        from .update_check import check_for_update
+
+        avail, latest, current = check_for_update()
+        if avail and self.tray is not None:
+            try:
+                self.tray.icon.notify(
+                    f"EmoDict {latest} is available (you have {current}). "
+                    f"Click 'Check for updates' in the tray menu.", "EmoDict")
+            except Exception:  # noqa: BLE001
+                pass
+
     # ---- lifecycle ---------------------------------------------------------
     def run(self) -> None:
         if "--console" in sys.argv:
@@ -198,9 +232,11 @@ class App:
 
         self.tray = Tray(on_settings=self.open_settings,
                          on_toggle_pause=self.toggle_pause,
+                         on_update=self.check_update_notify,
                          on_quit=lambda: self.root.after(0, self.root.quit))
         self.tray.start()
         self._bind_hotkey()
+        threading.Thread(target=self._quiet_update_check, daemon=True).start()
         try:
             self.root.mainloop()
         finally:
