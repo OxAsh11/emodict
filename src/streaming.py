@@ -39,6 +39,8 @@ class StreamingTranscriber:
 
     # ---- producer (recorder callback thread) --------------------------------
     def push(self, frame) -> None:
+        if frame.ndim > 1:  # sounddevice mono frames arrive as (N, 1)
+            frame = frame.flatten()
         with self._lock:
             self._buf.append(frame)
             self._n += len(frame)
