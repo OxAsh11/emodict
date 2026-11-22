@@ -53,6 +53,7 @@ def make_app():
         lambda self: (App._cancel_tap_timer(self),
                       setattr(self, "dispatched", self.dispatched + 1)), a)
     a._overlay_show = types.MethodType(lambda self, s: None, a)
+    a._start_streaming = types.MethodType(lambda self: None, a)
     return a
 
 
