@@ -10,8 +10,9 @@ from typing import Optional, TypedDict
 
 from .calibration import DEFAULT_CLASS_THRESHOLD, load_thresholds
 from .transcriber import Segment
+from .voice_memory import VoiceMemory
 
-_NEVER_TAG = ("neutral", "other", "<unk>")
+_NEVER_TAG = ("other", "<unk>")   # neutral IS taggable now: calm is information
 
 
 class EmotionSpan(TypedDict):
@@ -26,6 +27,7 @@ class EmotionAnalyzer:
         self.model = None
         self.enabled = enabled
         self.thresholds: dict = load_thresholds()
+        self.memory = VoiceMemory().load()
         if enabled:
             try:
                 from funasr import AutoModel
@@ -67,13 +69,21 @@ class EmotionAnalyzer:
         return spans
 
     def _decide(self, labels: list[str], scores: list[float]):
-        """Calibrated decision: any non-neutral class above ITS personal
-        threshold wins; highest qualifier wins ties. None -> no tag."""
+        """Every take gets a tag (calm is information too - the receiving AI
+        must never wonder whether tone was measured). WHICH tag:
+        a non-neutral class that crossed its personal threshold OR is a
+        statistical outlier for this voice (memory z-score); otherwise the
+        dominant class, usually neutral."""
+        pairs = dict(zip(labels, scores))
+        self.memory.update(pairs)
         best = None
-        for label, score in zip(labels, scores):
+        for label, score in pairs.items():
             if label in _NEVER_TAG:
                 continue
-            thr = self.thresholds.get(label, DEFAULT_CLASS_THRESHOLD)
-            if score >= thr and (best is None or score > best[1]):
+            if ((score >= self.thresholds.get(label, DEFAULT_CLASS_THRESHOLD)
+                 or self.memory.is_elevated(label, score))
+                    and (best is None or score > best[1])):
                 best = (label, score)
+        if best is None:
+            best = max(pairs.items(), key=lambda kv: kv[1])
         return best

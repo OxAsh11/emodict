@@ -60,18 +60,33 @@ class App:
 
     # ---- pipeline --------------------------------------------------------
     def process(self, audio) -> tuple[str | None, list, list]:
-        """Returns (text, segments, emotions); logging happens in _dispatch
-        where the latency is known."""
+        """Returns (text, segments, emotions). The two engines run in PARALLEL
+        on the same audio (emotion on CPU, STT on CPU/GPU) - the fork joins
+        before assembly. Gate for both: the take must contain sound."""
+        import numpy as np
+
         if audio is None or len(audio) == 0:
             return None, [], []
-        segments = self.stt.transcribe(audio)
+        has_sound = float(np.abs(audio).max()) > 0.01
+
+        emo_box: dict = {}
+        emo_thread = None
+        if has_sound and self.emotion.enabled and self.emotion.model is not None:
+            def _run_emo():
+                # whole take, not per segment: the prosodic signal of desk-voice
+                # frustration lives in the full utterance (measured: angry=0.123
+                # whole vs 0.000-0.009 per segment)
+                emo_box["spans"] = self.emotion.analyze(audio, 16000, None)
+            emo_thread = threading.Thread(target=_run_emo)
+            emo_thread.start()
+
+        segments = self.stt.transcribe(audio) if has_sound else []
+        if emo_thread is not None:
+            emo_thread.join(timeout=15)
+        emotions = emo_box.get("spans", [])
+
         if not segments:
-            return None, [], []
-        # emotion is scored on the WHOLE take, not per segment: the prosodic
-        # signal of desk-voice frustration lives in the full utterance and
-        # collapses when chopped (measured: founder take angry=0.123 whole,
-        # 0.000-0.009 per segment). The tag rides at the front of the output.
-        emotions = self.emotion.analyze(audio, 16000, None)
+            return None, segments, emotions
         text = self.cleaner.format_output(segments, emotions)
         return (text or None), segments, emotions
 
