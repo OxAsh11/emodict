@@ -32,9 +32,19 @@ class EmotionAnalyzer:
             try:
                 from funasr import AutoModel
 
+                # Frozen apps fail hub-id resolution sometimes (registry then
+                # rejects the raw id): pass the LOCAL snapshot path when it
+                # exists; AutoModel reads config.yaml there -> "Emotion2vec",
+                # which is always registered. Falls back to the id (venv dev).
+                from pathlib import Path
+
+                snap = (Path.home() / ".cache" / "modelscope" / "models"
+                        / "iic--emotion2vec_plus_base" / "snapshots" / "master")
+                model_arg = str(snap) if snap.exists() else model_id
+
                 # disable_update: funasr phones home to check its own version
                 # on every init; costs seconds and we never care
-                self.model = AutoModel(model=model_id, disable_update=True)
+                self.model = AutoModel(model=model_arg, disable_update=True)
             except Exception as e:  # noqa: BLE001 - degrade, never block dictation
                 print(f"[emotion] disabled ({e.__class__.__name__}: {e})")
                 self.enabled = False

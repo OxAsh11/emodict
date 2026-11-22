@@ -77,4 +77,17 @@ def run_selftest() -> int:
         print("[selftest] emotion: funasr not importable, skipped")
 
     print(f"[selftest] emotion {'PASS' if emo_ok else 'FAIL' if emo_ok is not None else 'SKIPPED'}")
+
+    # Windowed exes swallow stdout: also write results to a marker file the
+    # build chain can read (exit code alone once hid a broken emotion build).
+    try:
+        from pathlib import Path
+
+        marker = (Path(__import__("os").environ["LOCALAPPDATA"])
+                  / "EmoDict" / "logs" / "selftest.txt")
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(f"STT {'PASS' if ok else 'FAIL'}\n"
+                          f"emotion {'PASS' if emo_ok else 'FAIL' if emo_ok is not None else 'SKIPPED'}\n")
+    except Exception:  # noqa: BLE001
+        pass
     return 0 if (ok and emo_ok is not False) else 1
