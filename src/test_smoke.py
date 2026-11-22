@@ -55,11 +55,15 @@ finally:
     if _backup is not None:
         _sp.write_bytes(_backup)
 
-# 4. startup vbs dry-run: never writes
+# 4. startup vbs dry-run: never creates or modifies the file (the user may
+#    have legitimately enabled start-with-Windows, in which case it exists)
+_sp = settings_store.startup_vbs_path()
+_existed, _mtime = _sp.exists(), (_sp.stat().st_mtime if _sp.exists() else 0)
 p = settings_store.set_start_with_windows(
     True, Path("C:/proj"), Path("C:/py/pythonw.exe"), write=False)
-vbs_exists = p.exists() if p else True
-check("startup vbs dry-run writes nothing", p is not None and not vbs_exists,
+check("startup vbs dry-run writes nothing",
+      p is not None and _sp.exists() == _existed
+      and (_sp.stat().st_mtime if _sp.exists() else 0) == _mtime,
       f"would write: {p}")
 
 # 5. tray icon construction (no run)
