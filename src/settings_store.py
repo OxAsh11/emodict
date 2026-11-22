@@ -64,6 +64,26 @@ def load_settings() -> Config:
                     setattr(cfg, k, v)
         except (json.JSONDecodeError, OSError) as e:
             print(f"[settings] could not read {p}: {e}; using defaults")
+
+        # Migration: settings written before 0.3.0 stored emotion_enabled=false
+        # as a *default*, never a user choice. Crossing into 0.3.0+ turns the
+        # emotion engine on once; users can still switch it off in Settings.
+        from .update_check import VERSION
+
+        saved_version = str(data.get("app_version", "0.0.0")) if p.exists() else "0.0.0"
+
+        def _vtuple(s):
+            try:
+                return tuple(int(x) for x in s.split("."))
+            except ValueError:
+                return (0, 0, 0)
+
+        if _vtuple(saved_version) < (0, 3, 0) and not cfg.emotion_enabled:
+            print(f"[settings] migrating {saved_version} -> {VERSION}: "
+                  f"enabling emotion engine (one-time)", flush=True)
+            cfg.emotion_enabled = True
+            cfg.app_version = VERSION
+            save_settings(cfg)
     return cfg
 
 
