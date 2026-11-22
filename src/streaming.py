@@ -94,7 +94,13 @@ class StreamingTranscriber:
     def _pass(self, audio, start) -> None:
         tail = audio[max(0, start - 0):]  # snapshot already trimmed
         base = start / 16000.0
-        segs = self.stt.transcribe(tail)
+        # continuity: feed the last locked words so segment chops don't
+        # change spelling/terminology mid-take
+        prompt = None
+        if self._locked_segs:
+            tail_txt = " ".join(s["text"] for s in self._locked_segs[-3:])
+            prompt = " ".join(tail_txt.split()[-40:])
+        segs = self.stt.transcribe(tail, initial_prompt=prompt)
         abs_segs = [{"start": s["start"] + base, "end": s["end"] + base,
                      "text": s["text"]} for s in segs]
         now_end = len(audio) / 16000.0

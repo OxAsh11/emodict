@@ -95,19 +95,22 @@ class Transcriber:
         self.compute_type = compute_type
         self.language = language
 
-    def transcribe(self, audio) -> list[Segment]:
+    def transcribe(self, audio, initial_prompt: str | None = None) -> list[Segment]:
         """audio: float32 numpy array at 16kHz. Returns timestamped segments.
-        Serialized: the streaming loop and final passes share one model."""
+        Serialized: the streaming loop and final passes share one model.
+        initial_prompt: previous locked words - keeps spelling/terminology
+        consistent across chopped segments (the polish layer's cheap half)."""
         with self._call_lock:
-            return self._transcribe_locked(audio)
+            return self._transcribe_locked(audio, initial_prompt)
 
-    def _transcribe_locked(self, audio) -> list[Segment]:
+    def _transcribe_locked(self, audio, initial_prompt: str | None = None) -> list[Segment]:
         segments_iter, info = self.model.transcribe(
             audio,
             language=self.language,
             beam_size=self.beam_size,
             vad_filter=True,
             word_timestamps=False,
+            initial_prompt=initial_prompt or None,
         )
         return [
             {"start": s.start, "end": s.end, "text": s.text.strip()}
