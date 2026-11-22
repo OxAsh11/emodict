@@ -96,11 +96,17 @@ class App:
         try:
             from .streaming import StreamingTranscriber
 
+            self._streamer = StreamingTranscriber(self.stt)
+
             if self.emotion.enabled and self.emotion.model is not None:
                 from .emo_stream import EmotionStreamWorker
 
+                # bind the streamer instance directly: by stop() time
+                # self._streamer is already None, and a self._streamer lambda
+                # made every still-queued block crash and drop
+                snap = self._streamer.snapshot_audio
                 self._emo_worker = EmotionStreamWorker(
-                    self.emotion, self.voice_lock, lambda: self._streamer.snapshot_audio())
+                    self.emotion, self.voice_lock, snap)
                 self._emo_worker.start()
 
             def on_locked(newly):
@@ -119,7 +125,7 @@ class App:
                             self._emo_worker.submit(g)
                         self._emo_grouping = []
 
-            self._streamer = StreamingTranscriber(self.stt, on_locked=on_locked)
+            self._streamer.on_locked = on_locked
             self._streamer.start()
             print("[app] streaming STT active (locked-prefix, live tone blocks)",
                   flush=True)
@@ -283,6 +289,8 @@ class App:
         if not self.cfg.log_takes:
             return
         audio_s = sum(s["end"] - s["start"] for s in segments)
+        if elapsed is None and audio_s == 0.0 and not text:
+            return  # zero-length key tap: not a failure, ledger stays clean
         tags = [e["label"] for e in emotions]
         try:
             p = Path(self.cfg.history_path)
