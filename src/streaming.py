@@ -20,9 +20,11 @@ class StreamingTranscriber:
     STABLE_MARGIN_S = 1.5  # segments must end this far behind to lock
     MIN_CHUNK_S = 1.2    # don't run a pass for less than this new audio
 
-    def __init__(self, stt, on_pass=None, poll_s: float = 1.2):
+    def __init__(self, stt, on_pass=None, poll_s: float = 1.2,
+                 on_locked=None):
         self.stt = stt                 # shared Transcriber (calls serialized)
         self.on_pass = on_pass         # callback(partial_text) for UI
+        self.on_locked = on_locked     # callback(newly_locked_segments)
         self.poll_s = poll_s
         self._buf: list = []
         self._n = 0                    # samples buffered
@@ -53,6 +55,13 @@ class StreamingTranscriber:
             start = max(0, self._lock_sample - int(self.OVERLAP_S * 16000))
             audio = np.concatenate(self._buf) if self._buf else np.zeros(0)
         return audio, start
+
+    def snapshot_audio(self):
+        """Full-buffer copy (for the emotion block worker)."""
+        import numpy as np
+
+        with self._lock:
+            return np.concatenate(self._buf).copy() if self._buf else np.zeros(0, dtype="float32")
 
     # ---- consumer loop ---------------------------------------------------------
     def start(self) -> None:
@@ -105,10 +114,17 @@ class StreamingTranscriber:
 
         if stable:
             # extend the locked chain with stable segments in order
+            newly = []
             for s in sorted(stable, key=lambda x: x["start"]):
                 if not self._locked_segs or s["start"] >= self._locked_segs[-1]["end"] - 0.3:
                     self._locked_segs.append(s)
                     self._lock_sample = int(s["end"] * 16000)
+                    newly.append(s)
+            if newly and self.on_locked:
+                try:
+                    self.on_locked(newly)
+                except Exception:  # noqa: BLE001
+                    pass
         self._prev_segs = abs_segs
         self._passes += 1
         if self.on_pass:

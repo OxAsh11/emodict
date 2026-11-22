@@ -84,8 +84,11 @@ class App:
             self._streamer.push(frame)
 
     def _start_streaming(self) -> None:
-        """GPU-only locked-prefix streaming; CPU builds keep end-of-take STT."""
+        """GPU-only locked-prefix streaming; CPU builds keep end-of-take STT.
+        Emotion blocks are scored live too (length-independent latency)."""
         self._streamer = None
+        self._emo_worker = None
+        self._emo_grouping: list = []
         if not getattr(self.cfg, "streaming_enabled", True):
             return
         if self.stt.device != "cuda":
@@ -93,25 +96,55 @@ class App:
         try:
             from .streaming import StreamingTranscriber
 
-            self._streamer = StreamingTranscriber(self.stt)
+            if self.emotion.enabled and self.emotion.model is not None:
+                from .emo_stream import EmotionStreamWorker
+
+                self._emo_worker = EmotionStreamWorker(
+                    self.emotion, self.voice_lock, lambda: self._streamer.snapshot_audio())
+                self._emo_worker.start()
+
+            def on_locked(newly):
+                # group locked sentences into 6-15s prosodic blocks; submit
+                # each completed block for live tone scoring
+                for s in newly:
+                    g = self._emo_grouping
+                    if g and s["end"] - g[0]["start"] > self.GROUP_MAX_S:
+                        if self._emo_worker:
+                            self._emo_worker.submit(g)
+                        self._emo_grouping = [s]
+                        continue
+                    g.append(s)
+                    if s["end"] - g[0]["start"] >= self.GROUP_MIN_S:
+                        if self._emo_worker:
+                            self._emo_worker.submit(g)
+                        self._emo_grouping = []
+
+            self._streamer = StreamingTranscriber(self.stt, on_locked=on_locked)
             self._streamer.start()
-            print("[app] streaming STT active (locked-prefix)", flush=True)
+            print("[app] streaming STT active (locked-prefix, live tone blocks)",
+                  flush=True)
         except Exception as e:  # noqa: BLE001 - streaming is an optimization
             self._streamer = None
+            self._emo_worker = None
             print(f"[app] streaming unavailable: {e}", flush=True)
 
     def _collect_streaming(self):
         st = self._streamer
         self._streamer = None
+        ew = self._emo_worker
+        self._emo_worker = None
         if st is None:
-            return None
+            return None, None
         try:
             segs = st.stop()
-            print(f"[app] streaming: {st.stats}", flush=True)
-            return segs if segs else None
+            live_spans = ew.stop(timeout=15) if ew is not None else None
+            print(f"[app] streaming: {st.stats}"
+                  + (f" | live tone blocks: {len(live_spans)}"
+                     if live_spans is not None else ""), flush=True)
+            return (segs if segs else None), live_spans
         except Exception as e:  # noqa: BLE001
             print(f"[app] streaming stop failed: {e}", flush=True)
-            return None
+            return None, None
 
     # ---- pipeline --------------------------------------------------------
     @staticmethod
@@ -133,9 +166,10 @@ class App:
         snr_db = 20.0 * np.log10(speech_rms / (noise_rms + 1e-9))
         return speech, float(snr_db)
 
-    def process(self, audio, pre_segments=None) -> tuple[str | None, list, list]:
-        """pre_segments: from the streaming loop (if it ran) - skips the full
-        end-of-take STT pass, which is the whole latency win."""
+    def process(self, audio, pre_segments=None, live_spans=None):
+        """pre_segments/live_spans: from the streaming loops (if they ran) -
+        blocks scored during recording are reused, so post-stop work shrinks
+        to the final tail, independent of take length."""
         import numpy as np
 
         if audio is None or len(audio) == 0:
@@ -171,6 +205,10 @@ class App:
         elif snr < self.cfg.tone_min_snr_db:
             print(f"[app] noisy environment (SNR {snr:.1f}dB < "
                   f"{self.cfg.tone_min_snr_db}dB): tone suppressed", flush=True)
+        elif live_spans is not None:
+            # streaming: most blocks were scored while recording; only the
+            # final partial block(s) score now
+            emotions = self._merge_live_emotions(audio, segments, live_spans)
         else:
             emotions = self._grouped_emotions(audio, segments)
 
@@ -180,37 +218,63 @@ class App:
     GROUP_MIN_S = 6.0   # merge consecutive sentences up to at least this
     GROUP_MAX_S = 15.0  # ...but never score more than this per block
 
-    def _grouped_emotions(self, audio, segments) -> list:
-        """Per-block tone: consecutive segments merged into 6-15s prosodic
-        blocks, each scored on its own concatenated speech. Short takes
-        collapse to a single block (whole-take scoring, as measured); long
-        toggle takes get a tone map across the take."""
-        import numpy as np
-
+    @staticmethod
+    def _groups(segments, min_s: float = 6.0, max_s: float = 15.0) -> list:
         groups, cur = [], []
         for s in segments:
-            if cur and s["end"] - cur[0]["start"] > self.GROUP_MAX_S:
+            if cur and s["end"] - cur[0]["start"] > max_s:
                 groups.append(cur)
                 cur = []
             cur.append(s)
-            if s["end"] - cur[0]["start"] >= self.GROUP_MIN_S:
+            if s["end"] - cur[0]["start"] >= min_s:
                 groups.append(cur)
                 cur = []
         if cur:
             groups.append(cur)
+        return groups
 
+    def _score_group(self, audio, g) -> dict | None:
+        import numpy as np
+
+        mask = np.zeros(len(audio), dtype=bool)
+        for s in g:
+            mask[int(s["start"] * 16000):int(s["end"] * 16000)] = True
+        gaudio = audio[mask]
+        if len(gaudio) < 16000 // 2:
+            return None
+        got = self.emotion.analyze(gaudio, 16000, None)
+        if not got:
+            return None
+        return {"start": g[0]["start"], "end": g[-1]["end"],
+                "label": got[0]["label"], "score": got[0]["score"]}
+
+    def _grouped_emotions(self, audio, segments) -> list:
+        """Per-block tone (batch path): consecutive segments merged into
+        6-15s prosodic blocks, each scored on its own concatenated speech."""
         spans = []
-        for g in groups:
-            mask = np.zeros(len(audio), dtype=bool)
-            for s in g:
-                mask[int(s["start"] * 16000):int(s["end"] * 16000)] = True
-            gaudio = audio[mask]
-            if len(gaudio) < 16000 // 2:
-                continue
-            got = self.emotion.analyze(gaudio, 16000, None)
-            if got:
-                spans.append({"start": g[0]["start"], "end": g[-1]["end"],
-                              "label": got[0]["label"], "score": got[0]["score"]})
+        for g in self._groups(segments, self.GROUP_MIN_S, self.GROUP_MAX_S):
+            span = self._score_group(audio, g)
+            if span:
+                spans.append(span)
+        return spans
+
+    def _merge_live_emotions(self, audio, segments, live_spans) -> list:
+        """Streaming path: reuse blocks scored DURING recording; score only
+        the unscored (final partial) blocks now. This is what makes latency
+        independent of take length."""
+        spans = []
+        for g in self._groups(segments, self.GROUP_MIN_S, self.GROUP_MAX_S):
+            match = None
+            for sp in live_spans:
+                if abs(sp["start"] - g[0]["start"]) < 1.0:
+                    match = sp
+                    break
+            if match is not None:
+                spans.append(match)
+            else:
+                span = self._score_group(audio, g)
+                if span:
+                    spans.append(span)
         return spans
 
     def _log_take(self, segments, emotions, text: str, elapsed: float | None) -> None:
@@ -239,14 +303,18 @@ class App:
 
     def _dispatch_inner(self) -> None:
         audio = self.recorder.stop()
-        stream_segs = self._collect_streaming() if audio is not None and len(audio) else None
+        if audio is not None and len(audio):
+            stream_segs, live_spans = self._collect_streaming()
+        else:
+            stream_segs, live_spans = None, None
         if audio is not None and len(audio) and os.environ.get("EMO_KEEP_AUDIO"):
             self._dump_take(audio)
         if self.shutdown.is_set():  # quit began while recording: drop the take
             return
         t0 = time.perf_counter()
         try:
-            text, segments, emotions = self.process(audio, pre_segments=stream_segs)
+            text, segments, emotions = self.process(
+                audio, pre_segments=stream_segs, live_spans=live_spans)
         except Exception as e:  # noqa: BLE001 - one bad take never kills the app
             from .crash import log_exception
 
