@@ -574,7 +574,31 @@ class App:
         print("[app] stopped clean; no injection can happen after this point.")
 
 
+def _single_instance() -> bool:
+    """Windows named mutex: only one EmoDict may run. Without this, an
+    install-while-running or double-launch left TWO instances fighting over
+    the hotkey (user hit exactly this)."""
+    import ctypes
+
+    ctypes.windll.kernel32.CreateMutexW(None, False, "EmoDict_SingleInstance")
+    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
 def main() -> int:
+    if not _single_instance():
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showinfo(
+                "EmoDict", "EmoDict is already running - check the tray "
+                "(hidden-icons arrow).")
+            r.destroy()
+        except Exception:  # noqa: BLE001
+            pass
+        return 0
     from . import settings_store
 
     use_gui_wizard = getattr(sys, "frozen", False) or sys.stdin is None
