@@ -152,17 +152,38 @@ class StreamingTranscriber:
                           "text": s["text"]} for s in segs]
         else:
             tail_segs = []
-        # merge: locked segments + tail, dropping tail segs that duplicate locks
-        merged = list(self._locked_segs)
-        for s in tail_segs:
-            dup = any(abs(m["start"] - s["start"]) < 0.6
-                      and m["text"] == s["text"] for m in merged)
-            if not dup:
-                merged.append(s)
-        merged.sort(key=lambda x: x["start"])
-        self.final_segments = merged
+        # merge: locked segments + tail. Locked chain is authoritative; the
+        # tail re-transcribes a 1s overlap, so drop segments fully covered
+        # by locked time and TRIM shared words from partial overlaps (exact
+        # text-equality dedup once duplicated boundary words: user saw
+        # "Performance. Performance, right?" from one utterance).
+        def trim_overlap(prev_text: str, new_text: str) -> str:
+            a, b = prev_text.split(), new_text.split()
+            for k in range(min(len(a), len(b), 12), 0, -1):
+                if a[-k:] == b[:k]:
+                    return " ".join(b[k:]).strip()
+            return new_text.strip()
+
+        merged = sorted(list(self._locked_segs) + [s for s in tail_segs],
+                        key=lambda x: x["start"])
+        out: list = []
+        for s in merged:
+            if not out:
+                out.append(s)
+                continue
+            last_end = out[-1]["end"]
+            if s["end"] <= last_end + 0.2:
+                continue  # fully covered by the locked chain
+            if s["start"] < last_end - 0.1:
+                s = dict(s)
+                s["text"] = trim_overlap(out[-1]["text"], s["text"])
+                s["start"] = last_end
+                if not s["text"]:
+                    continue
+            out.append(s)
+        self.final_segments = out
         self.wait_after_stop_s = time.perf_counter() - t0
-        return merged
+        return out
 
     @property
     def stats(self) -> str:
