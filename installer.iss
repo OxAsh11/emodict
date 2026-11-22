@@ -41,5 +41,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     ValueData: """{app}\EmoDict.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
+; interactive install: user-checked "Launch EmoDict now"
 Filename: "{app}\EmoDict.exe"; Description: "Launch EmoDict now"; \
     Flags: nowait postinstall skipifsilent
+; silent install (upgrades): ALWAYS relaunch - the app was closed for the
+; update and must come back on its own
+Filename: "{app}\EmoDict.exe"; Flags: nowait; Check: WizardSilent

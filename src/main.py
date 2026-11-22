@@ -164,17 +164,67 @@ class App:
         except Exception as e:  # noqa: BLE001
             print(f"[app] debug dump failed: {e}", flush=True)
 
+    # ---- input state (hold-to-talk + double-tap toggle) ----------------------
+    TAP_S = 0.30      # max hold that counts as a tap
+    DBL_S = 0.50      # window between taps of a double-tap
+    _press_time = 0.0
+    _last_tap_end = 0.0
+    _toggle_active = False
+    _swallow_until = 0.0
+    _tap_timer: threading.Timer | None = None
+
     def on_press(self, event) -> None:
         if self.shutdown.is_set() or self.paused or self._loading_model:
             return
+        now = time.perf_counter()
+        if self._toggle_active:
+            if now >= self._swallow_until:  # this press = STOP
+                self._toggle_active = False
+                self._spawn_dispatch()
+            return  # presses inside the swallow window are the dblclick itself
         if self.recorder is not None and not self.recorder.recording:
             self.recorder.start()
             self._overlay_show("recording")
             print("[app] recording...", flush=True)
+        self._cancel_tap_timer()
+        self._press_time = now
 
     def on_release(self, event) -> None:
         if self.shutdown.is_set() or self.recorder is None or not self.recorder.recording:
             return
+        if self._toggle_active:
+            return  # swallowed release (part of the toggle start or mid-take)
+        held = time.perf_counter() - self._press_time
+        if held < self.TAP_S:
+            # a tap: either the first half of a double-tap, or a stray short
+            # press. Keep recording; decide shortly.
+            if self._last_tap_end and time.perf_counter() - self._last_tap_end < self.DBL_S:
+                self._last_tap_end = 0.0
+                self._toggle_active = True  # double-tap: hands-free mode ON
+                self._swallow_until = time.perf_counter() + 0.45
+                print("[app] toggle mode: recording until next press", flush=True)
+            else:
+                self._last_tap_end = time.perf_counter()
+                self._tap_timer = threading.Timer(self.DBL_S, self._tap_timeout)
+                self._tap_timer.daemon = True
+                self._tap_timer.start()
+        else:
+            self._last_tap_end = 0.0
+            self._spawn_dispatch()  # classic hold-to-talk
+
+    def _tap_timeout(self) -> None:
+        # no second tap came: treat the short press as a (tiny) hold
+        self._last_tap_end = 0.0
+        if self.recorder is not None and self.recorder.recording:
+            self._spawn_dispatch()
+
+    def _cancel_tap_timer(self) -> None:
+        if self._tap_timer is not None:
+            self._tap_timer.cancel()
+            self._tap_timer = None
+
+    def _spawn_dispatch(self) -> None:
+        self._cancel_tap_timer()
         self._worker = threading.Thread(target=self._dispatch, daemon=True)
         self._worker.start()
 
@@ -266,6 +316,8 @@ class App:
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
+        self._toggle_active = False
+        self._cancel_tap_timer()
         if self.paused and self.recorder is not None and self.recorder.recording:
             self.recorder.stop()
         if self.tray is not None:
@@ -371,6 +423,7 @@ class App:
             return
         print("[app] shutting down...", flush=True)
         self.shutdown.set()
+        self._cancel_tap_timer()
         try:
             keyboard.unhook_all()
         except Exception:  # noqa: BLE001
