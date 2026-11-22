@@ -44,8 +44,23 @@ class App:
         self._streamer = None        # live StreamingTranscriber while recording
 
         print("[app] loading model...", flush=True)
-        self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type,
-                               cfg.language, cfg.beam_size)
+        try:
+            self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type,
+                                   cfg.language, cfg.beam_size)
+        except Exception as e:  # noqa: BLE001 - a broken model cache must
+            # degrade, never kill the app
+            print(f"[app] model {cfg.model_size} FAILED to load ({e}); "
+                  f"falling back", flush=True)
+            for fallback in ("base", "tiny"):
+                try:
+                    self.stt = Transcriber(fallback, "cpu", "int8",
+                                           cfg.language, cfg.beam_size)
+                    print(f"[app] running on fallback model '{fallback}'", flush=True)
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+            else:
+                raise
         print(f"[app] STT ready: model={cfg.model_size} device={self.stt.device} "
               f"compute={self.stt.compute_type}", flush=True)
         self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=False)

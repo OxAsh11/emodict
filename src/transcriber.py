@@ -75,13 +75,20 @@ class Transcriber:
             device = "cuda" if _cuda_available() else "cpu"
         if compute_type == "auto":
             compute_type = "int8_float16" if device == "cuda" else "int8"
+        # stable local model dir wins over the HF cache (the shared cache can
+        # be corrupted by concurrent clients / xet relayout races)
+        import os as _os
+
+        local_dir = (Path(_os.getenv("APPDATA", "")) / "EmoDict" / "models"
+                     / model_size)
+        src = str(local_dir) if (local_dir / "model.bin").exists() else model_size
         try:
-            self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            self.model = WhisperModel(src, device=device, compute_type=compute_type)
         except Exception as e:  # noqa: BLE001 - broken/missing CUDA runtime -> CPU
             if device == "cuda":
                 print(f"[stt] CUDA load failed ({e}); falling back to CPU int8")
                 device, compute_type = "cpu", "int8"
-                self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+                self.model = WhisperModel(src, device=device, compute_type=compute_type)
             else:
                 raise
         self.device = device
