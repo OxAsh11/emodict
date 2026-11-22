@@ -8,6 +8,7 @@ Threading model:
   shutdown begins (the reference-build race that pasted into random windows).
 Run with --console to keep the old console-only behaviour.
 """
+import os
 import sys
 import threading
 import time
@@ -35,6 +36,7 @@ class App:
         self.root = None          # set by run(); tkinter main thread
         self.overlay = None       # set by run(); recording indicator
         self.tray = None          # set by run()
+        self.mainwin = None       # set by run(); the visible main window
         self.welcome = None       # set by run(); first-run welcome card
         self._settings_win = None
         self._worker: threading.Thread | None = None
@@ -87,6 +89,8 @@ class App:
     def _dispatch(self) -> None:
         self._overlay_show("processing")
         audio = self.recorder.stop()
+        if audio is not None and len(audio) and os.environ.get("EMO_KEEP_AUDIO"):
+            self._dump_take(audio)
         if self.shutdown.is_set():  # quit began while recording: drop the take
             return
         t0 = time.perf_counter()
@@ -115,8 +119,23 @@ class App:
         else:
             print(f"[app] inject_mode={mode}, not injecting")
         self._overlay_hide()
+        if self.mainwin is not None and self.root is not None:
+            self.root.after(0, self.mainwin.refresh)
         if self.cfg.onboarding_pending and self.welcome is not None:
             self.root.after(0, self.welcome.finish)
+
+    def _dump_take(self, audio) -> None:
+        """Debug: save the raw take for offline tone-score analysis."""
+        try:
+            import soundfile as sf
+
+            d = (Path(os.getenv("LOCALAPPDATA", ".")) / "EmoDict" / "debug")
+            d.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%H%M%S")
+            sf.write(str(d / f"take_{ts}.wav"), audio, 16000)
+            print(f"[app] debug: saved take_{ts}.wav", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[app] debug dump failed: {e}", flush=True)
 
     def on_press(self, event) -> None:
         if self.shutdown.is_set() or self.paused or self._loading_model:
@@ -215,6 +234,8 @@ class App:
                   f"(tone tags live)", flush=True)
         elif not ea.enabled:
             print("[app] emotion model unavailable; tags stay off", flush=True)
+        if self.mainwin is not None and self.root is not None and not self.shutdown.is_set():
+            self.root.after(0, self.mainwin.refresh)
 
     def toggle_pause(self) -> None:
         self.paused = not self.paused
@@ -304,6 +325,10 @@ class App:
         self.tray.start()
         self._bind_hotkey()
         threading.Thread(target=self._quiet_update_check, daemon=True).start()
+        from .mainwindow import MainWindow
+
+        self.mainwin = MainWindow(self.root, self)
+        self.mainwin.show()
         if self.cfg.onboarding_pending:
             from .welcome import WelcomeCard
 

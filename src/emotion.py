@@ -1,13 +1,17 @@
-"""Emotion branch (Weekend 4). Interface ships today so the pipeline is wired.
+"""Emotion branch: emotion2vec fork, aligned to Whisper timestamps.
 
-Install when ready:
-    uv pip install -p .venv torch --index-url https://download.pytorch.org/whl/cpu
-    uv pip install -p .venv funasr
-Model: iic/emotion2vec_plus_base (downloads from ModelScope on first run).
+Decision rule: a non-neutral class is tagged when its score crosses the
+USER's calibrated threshold for that class (calibration.json, measured from
+their own clips); uncalibrated classes fall back to a strict 0.60. See
+src/calibration.py for why argmax+0.6 fails real desk-voice frustration.
 """
+import os
 from typing import Optional, TypedDict
 
+from .calibration import DEFAULT_CLASS_THRESHOLD, load_thresholds
 from .transcriber import Segment
+
+_NEVER_TAG = ("neutral", "other", "<unk>")
 
 
 class EmotionSpan(TypedDict):
@@ -21,6 +25,7 @@ class EmotionAnalyzer:
     def __init__(self, model_id: str = "iic/emotion2vec_plus_base", enabled: bool = False):
         self.model = None
         self.enabled = enabled
+        self.thresholds: dict = load_thresholds()
         if enabled:
             try:
                 from funasr import AutoModel
@@ -52,10 +57,23 @@ class EmotionAnalyzer:
                 labels = [str(l).split("/")[-1] for l in r.get("labels", [])]
                 scores = [float(s) for s in r.get("scores", [])]
                 if labels and scores:
-                    best = max(zip(labels, scores), key=lambda x: x[1])
-                    if best[0] not in ("<unk>",):
+                    pick = self._decide(labels, scores)
+                    if pick is not None:
+                        label, score = pick
                         spans.append({"start": seg["start"], "end": seg["end"],
-                                      "label": best[0], "score": best[1]})
+                                      "label": label, "score": score})
             except Exception as e:  # noqa: BLE001
                 print(f"[emotion] segment failed: {e}")
         return spans
+
+    def _decide(self, labels: list[str], scores: list[float]):
+        """Calibrated decision: any non-neutral class above ITS personal
+        threshold wins; highest qualifier wins ties. None -> no tag."""
+        best = None
+        for label, score in zip(labels, scores):
+            if label in _NEVER_TAG:
+                continue
+            thr = self.thresholds.get(label, DEFAULT_CLASS_THRESHOLD)
+            if score >= thr and (best is None or score > best[1]):
+                best = (label, score)
+        return best

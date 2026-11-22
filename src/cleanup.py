@@ -67,14 +67,13 @@ class Cleaner:
     def _tag_for(self, seg: Segment, emotions: Optional[list[EmotionSpan]]) -> str:
         if not emotions or not getattr(self.cfg, "show_tone_tags", True):
             return ""
+        # decision authority lives in the calibrated analyzer (emotion.py);
+        # any span that reaches here already crossed its personal threshold
         best: Optional[EmotionSpan] = None
         for e in emotions:
             overlap = min(seg["end"], e["end"]) - max(seg["start"], e["start"])
             if overlap > 0 and (best is None or e["score"] > best["score"]):
                 best = e
-        if best and best["score"] >= self.cfg.tone_tag_threshold \
-                and best["label"] not in ("neutral", "other"):
-            # neutral/other above threshold = no signal; tagging every calm
-            # sentence [tone: neutral] is noise, not information
+        if best:
             return f"[tone: {best['label']}, {best['score']:.2f}]"
         return ""
