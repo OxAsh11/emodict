@@ -202,13 +202,15 @@ class App:
         speech, snr = self._speech_and_snr(audio, segments)
         if speech is None:
             pass  # sub-half-second speech: nothing to judge
+        elif live_spans is not None:
+            # streaming: every live block already passed its own windowed
+            # SNR gate during recording. The whole-take gate measures TV /
+            # dropped-voice regions as "noise" (user's 90s take: 8 good
+            # blocks vetoed by a -1.2dB global reading) - trust the blocks.
+            emotions = self._merge_live_emotions(audio, segments, live_spans)
         elif snr < self.cfg.tone_min_snr_db:
             print(f"[app] noisy environment (SNR {snr:.1f}dB < "
                   f"{self.cfg.tone_min_snr_db}dB): tone suppressed", flush=True)
-        elif live_spans is not None:
-            # streaming: most blocks were scored while recording; only the
-            # final partial block(s) score now
-            emotions = self._merge_live_emotions(audio, segments, live_spans)
         else:
             emotions = self._grouped_emotions(audio, segments)
 
