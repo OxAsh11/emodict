@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
-SIM_THRESHOLD = 0.50   # cosine similarity to count as "me". Measured on the
-                       # founder: his mixed-quality segments >= 0.66, TV voice
-                       # <= 0.08 - 0.50 splits the gap with margin both ways
+SIM_THRESHOLD = 0.40   # cosine similarity to count as "me". Measured: founder
+                       # segments >= 0.66, TV <= 0.08; real-mic movie dialogue
+                       # leaked once at 0.50, so tightened with margin.
 
 
 def profile_path() -> Path:
