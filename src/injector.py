@@ -71,11 +71,31 @@ def set_clipboard_text(text: str) -> bool:
         _user32.CloseClipboard()
 
 
-def inject(text: str, settle_s: float = 0.15, dry_run: bool = False) -> bool:
-    """Paste `text` at the cursor. dry_run prints instead of touching anything."""
+def get_foreground_hwnd() -> int:
+    """Which window has focus right now (the paste target)."""
+    return _user32.GetForegroundWindow() or 0
+
+
+def focus_hwnd(hwnd: int) -> bool:
+    """Best-effort: bring a window back to the foreground before pasting."""
+    if not hwnd:
+        return False
+    try:
+        return bool(_user32.SetForegroundWindow(hwnd))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def inject(text: str, settle_s: float = 0.15, dry_run: bool = False,
+           target_hwnd: int = 0) -> bool:
+    """Paste `text` at the cursor. If target_hwnd is given (captured when
+    recording STARTED), that window is re-focused first - so a long toggle-mode
+    transcription doesn't land wherever you happened to click meanwhile."""
     if dry_run:
         print(f"[inject:dry-run] {text!r}")
         return True
+    if target_hwnd:
+        focus_hwnd(target_hwnd)
     prev = get_clipboard_text()
     if not set_clipboard_text(text):
         print("[inject] could not open/set clipboard")

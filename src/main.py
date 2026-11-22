@@ -140,7 +140,8 @@ class App:
         mode = self.cfg.inject_mode
         print(f"[app] {elapsed:.2f}s: {text}")
         if mode == "clipboard":
-            inject(text, settle_s=self.cfg.paste_settle_s)
+            inject(text, settle_s=self.cfg.paste_settle_s,
+                   target_hwnd=getattr(self, "_target_hwnd", 0))
         elif mode == "dry":
             inject(text, dry_run=True)
         else:
@@ -183,6 +184,9 @@ class App:
                 self._spawn_dispatch()
             return  # presses inside the swallow window are the dblclick itself
         if self.recorder is not None and not self.recorder.recording:
+            from .injector import get_foreground_hwnd
+
+            self._target_hwnd = get_foreground_hwnd()  # where a long take must land
             self.recorder.start()
             self._overlay_show("recording")
             print("[app] recording...", flush=True)
@@ -241,10 +245,15 @@ class App:
     def _bind_hotkey(self) -> None:
         if self._hotkeys_bound:
             keyboard.unhook_all()
-        keyboard.on_press_key(self.cfg.hold_key, self.on_press, suppress=False)
-        keyboard.on_release_key(self.cfg.hold_key, self.on_release, suppress=False)
+        # suppress=True: while a key is designated as the dictation key, its
+        # ORIGINAL OS function (e.g. Win key opening Start) is blocked. The
+        # function returns automatically when the key is changed, the app
+        # quits, or it is uninstalled (the hook dies with the process).
+        keyboard.on_press_key(self.cfg.hold_key, self.on_press, suppress=True)
+        keyboard.on_release_key(self.cfg.hold_key, self.on_release, suppress=True)
         self._hotkeys_bound = True
-        print(f"[app] holding '{self.cfg.hold_key}' to dictate. "
+        print(f"[app] holding '{self.cfg.hold_key}' to dictate "
+              f"(its normal function is suspended while EmoDict runs). "
               f"Tray menu: Settings / Pause / Quit.", flush=True)
 
     # ---- settings / pause ------------------------------------------------------

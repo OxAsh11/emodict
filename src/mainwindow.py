@@ -73,6 +73,10 @@ class MainWindow:
                                    ("tone", 90, "w"), ("text", 420, "w")):
             self.tree.heading(col, text=col)
             self.tree.column(col, width=width, anchor=anchor, stretch=(col == "text"))
+        # copy support: double-click or Ctrl+C copies the FULL take text
+        self.tree.bind("<Double-1>", self._copy_selected)
+        self.tree.bind("<Control-c>", self._copy_selected)
+        self._takes = []
         sb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
         self.tree.pack(side="left", fill="both", expand=True, pady=(4, 12))
@@ -108,14 +112,31 @@ class MainWindow:
             takes = stats.parse_history(self.app.cfg.history_path)
         except Exception:  # noqa: BLE001
             takes = []
-        for t in reversed(takes[-300:]):  # newest first
+        self._takes = list(takes[-300:])
+        shown = 0
+        for idx, t in enumerate(reversed(self._takes)):  # newest first
             tone = ", ".join(t.tags) if t.tags else "-"
             lat = f"{t.elapsed:.1f}s" if t.elapsed is not None else "FAIL"
             text = t.text or "-"
             if needle and needle not in text.lower() and needle not in tone.lower():
                 continue
-            self.tree.insert("", "end", values=(
-                t.ts.strftime("%d %b %H:%M:%S"), lat, tone, text[:160]))
+            # iid maps the row back to the full (untruncated) take
+            self.tree.insert("", "end", iid=str(len(self._takes) - 1 - idx),
+                             values=(t.ts.strftime("%d %b %H:%M:%S"), lat, tone,
+                                     text[:160]))
+            shown += 1
+
+    def _copy_selected(self, _event=None) -> None:
+        """Double-click / Ctrl+C: full take text (untruncated) to clipboard."""
+        sel = self.tree.selection()
+        if not sel:
+            return
+        take = self._takes[int(sel[0])]
+        self.win.clipboard_clear()
+        self.win.clipboard_append(take.text or "")
+        self.status_var.set(f"copied take from "
+                            f"{take.ts.strftime('%H:%M:%S')} to clipboard")
+        self.root.after(2500, lambda: None)
 
     # ---- lifecycle ----------------------------------------------------------
     def show(self) -> None:
