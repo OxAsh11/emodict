@@ -41,6 +41,7 @@ class App:
         self._settings_win = None
         self._worker: threading.Thread | None = None
         self._hotkeys_bound = False
+        self._streamer = None        # live StreamingTranscriber while recording
 
         print("[app] loading model...", flush=True)
         self.stt = Transcriber(cfg.model_size, cfg.device, cfg.compute_type,
@@ -52,11 +53,47 @@ class App:
             threading.Thread(target=self._load_emotion, daemon=True).start()
         self.cleaner = Cleaner(cfg)
         try:
-            self.recorder = Recorder(device=cfg.mic_device)  # stream stays open
+            self.recorder = Recorder(device=cfg.mic_device,
+                                     on_frame=self._on_frame)  # stream stays open
             print("[app] mic stream open (persistent, pre-roll armed)", flush=True)
         except Exception as e:  # noqa: BLE001 - app starts, hotkey will report
             self.recorder = None
             print(f"[app] MIC OPEN FAILED: {e}", flush=True)
+
+    # ---- streaming hook -----------------------------------------------------
+    def _on_frame(self, frame) -> None:
+        if self._streamer is not None:
+            self._streamer.push(frame)
+
+    def _start_streaming(self) -> None:
+        """GPU-only locked-prefix streaming; CPU builds keep end-of-take STT."""
+        self._streamer = None
+        if not getattr(self.cfg, "streaming_enabled", True):
+            return
+        if self.stt.device != "cuda":
+            return
+        try:
+            from .streaming import StreamingTranscriber
+
+            self._streamer = StreamingTranscriber(self.stt)
+            self._streamer.start()
+            print("[app] streaming STT active (locked-prefix)", flush=True)
+        except Exception as e:  # noqa: BLE001 - streaming is an optimization
+            self._streamer = None
+            print(f"[app] streaming unavailable: {e}", flush=True)
+
+    def _collect_streaming(self):
+        st = self._streamer
+        self._streamer = None
+        if st is None:
+            return None
+        try:
+            segs = st.stop()
+            print(f"[app] streaming: {st.stats}", flush=True)
+            return segs if segs else None
+        except Exception as e:  # noqa: BLE001
+            print(f"[app] streaming stop failed: {e}", flush=True)
+            return None
 
     # ---- pipeline --------------------------------------------------------
     @staticmethod
@@ -78,18 +115,18 @@ class App:
         snr_db = 20.0 * np.log10(speech_rms / (noise_rms + 1e-9))
         return speech, float(snr_db)
 
-    def process(self, audio) -> tuple[str | None, list, list]:
-        """Returns (text, segments, emotions). STT first: its VAD tells us
-        WHERE the speech is; emotion then scores the concatenated speech spans
-        only (background-only audio removed), and is suppressed entirely in
-        low-SNR environments (measured noise floor within tone_min_snr_db of
-        the voice - e.g. a mixer grinder - where any tone call is a guess)."""
+    def process(self, audio, pre_segments=None) -> tuple[str | None, list, list]:
+        """pre_segments: from the streaming loop (if it ran) - skips the full
+        end-of-take STT pass, which is the whole latency win."""
         import numpy as np
 
         if audio is None or len(audio) == 0:
             return None, [], []
         has_sound = float(np.abs(audio).max()) > 0.01
-        segments = self.stt.transcribe(audio) if has_sound else []
+        if pre_segments is not None:
+            segments = pre_segments
+        else:
+            segments = self.stt.transcribe(audio) if has_sound else []
         if not segments:
             return None, segments, []
 
@@ -168,13 +205,14 @@ class App:
 
     def _dispatch_inner(self) -> None:
         audio = self.recorder.stop()
+        stream_segs = self._collect_streaming() if audio is not None and len(audio) else None
         if audio is not None and len(audio) and os.environ.get("EMO_KEEP_AUDIO"):
             self._dump_take(audio)
         if self.shutdown.is_set():  # quit began while recording: drop the take
             return
         t0 = time.perf_counter()
         try:
-            text, segments, emotions = self.process(audio)
+            text, segments, emotions = self.process(audio, pre_segments=stream_segs)
         except Exception as e:  # noqa: BLE001 - one bad take never kills the app
             from .crash import log_exception
 
@@ -240,6 +278,7 @@ class App:
 
             self._target_hwnd = get_foreground_hwnd()  # where a long take must land
             self.recorder.start()
+            self._start_streaming()
             self._overlay_show("recording")
             print("[app] recording...", flush=True)
         self._cancel_tap_timer()

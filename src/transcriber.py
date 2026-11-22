@@ -2,6 +2,7 @@
 import os
 import site
 import sys
+import threading
 from pathlib import Path
 from typing import TypedDict
 
@@ -68,6 +69,7 @@ class Transcriber:
         from faster_whisper import WhisperModel
 
         self.beam_size = beam_size
+        self._call_lock = threading.Lock()  # streaming + final passes share me
 
         if device == "auto":
             device = "cuda" if _cuda_available() else "cpu"
@@ -87,7 +89,12 @@ class Transcriber:
         self.language = language
 
     def transcribe(self, audio) -> list[Segment]:
-        """audio: float32 numpy array at 16kHz. Returns timestamped segments."""
+        """audio: float32 numpy array at 16kHz. Returns timestamped segments.
+        Serialized: the streaming loop and final passes share one model."""
+        with self._call_lock:
+            return self._transcribe_locked(audio)
+
+    def _transcribe_locked(self, audio) -> list[Segment]:
         segments_iter, info = self.model.transcribe(
             audio,
             language=self.language,

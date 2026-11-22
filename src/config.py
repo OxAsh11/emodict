@@ -45,6 +45,9 @@ class Config:
     # Dashboard
     dashboard_port: int = 8417
 
+    # Streaming STT (GPU builds only; locked-prefix keeps compute linear)
+    streaming_enabled: bool = True
+
     # Written on save; used by the 0.3.0 emotion migration
     app_version: str = "0.0.0"
 

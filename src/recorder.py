@@ -17,11 +17,12 @@ SAMPLE_RATE = 16000
 
 class Recorder:
     def __init__(self, samplerate: int = SAMPLE_RATE, device: int = -1,
-                 preroll_s: float = 0.30, tail_s: float = 0.20):
+                 preroll_s: float = 0.30, tail_s: float = 0.20, on_frame=None):
         self.samplerate = samplerate
         self.device = None if device is None or device < 0 else device
         self.preroll_s = preroll_s
         self.tail_s = tail_s
+        self.on_frame = on_frame      # live hook for streaming while recording
 
         self._ring: deque[np.ndarray] = deque()
         self._ring_seconds = 0.0
@@ -47,6 +48,11 @@ class Recorder:
             self._ring_seconds -= dropped.shape[0] / self.samplerate
         if self._collecting:
             self._frames.append(frame)
+            if self.on_frame is not None:
+                try:
+                    self.on_frame(frame)  # live feed for streaming STT
+                except Exception:  # noqa: BLE001 - never break capture
+                    pass
 
     def start(self) -> None:
         if self._collecting:
