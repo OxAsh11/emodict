@@ -56,11 +56,15 @@ class Cleaner:
     def format_output(self, segments: list[Segment],
                       emotions: Optional[list[EmotionSpan]] = None) -> str:
         parts: list[str] = []
+        last_tag = ""
         for seg in segments:
             text = self.clean_text(seg["text"])
             if not text:
                 continue
             tag = self._tag_for(seg, emotions)
+            if tag == last_tag and tag:
+                tag = ""  # whole-take spans: tag once at the front, not per line
+            last_tag = tag if tag else last_tag
             parts.append(f"{tag} {text}".strip())
         return " ".join(parts)
 

@@ -67,7 +67,11 @@ class App:
         segments = self.stt.transcribe(audio)
         if not segments:
             return None, [], []
-        emotions = self.emotion.analyze(audio, 16000, segments)
+        # emotion is scored on the WHOLE take, not per segment: the prosodic
+        # signal of desk-voice frustration lives in the full utterance and
+        # collapses when chopped (measured: founder take angry=0.123 whole,
+        # 0.000-0.009 per segment). The tag rides at the front of the output.
+        emotions = self.emotion.analyze(audio, 16000, None)
         text = self.cleaner.format_output(segments, emotions)
         return (text or None), segments, emotions
 
