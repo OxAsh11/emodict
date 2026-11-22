@@ -92,6 +92,14 @@ class App:
     # ---- worker ------------------------------------------------------------
     def _dispatch(self) -> None:
         self._overlay_show("processing")
+        try:
+            self._dispatch_inner()
+        finally:
+            # every exit path (empty take, failure, quit, success) hides the
+            # chip - the stuck-'transcribing' bug was a return that skipped this
+            self._overlay_hide()
+
+    def _dispatch_inner(self) -> None:
         audio = self.recorder.stop()
         if audio is not None and len(audio) and os.environ.get("EMO_KEEP_AUDIO"):
             self._dump_take(audio)

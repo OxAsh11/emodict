@@ -36,6 +36,14 @@ class RecordingOverlay:
         self._place()
         self.win.deiconify()
         self.win.lift()
+        # failsafe: never let a bug freeze the chip on screen
+        try:
+            self.win.after_cancel(self._auto_hide_id)
+        except Exception:  # noqa: BLE001
+            pass
+        self._auto_hide_id = self.win.after(15000, self.hide)
+
+    _auto_hide_id = None
 
     def hide(self) -> None:
         self.win.withdraw()
