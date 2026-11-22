@@ -69,7 +69,13 @@ class StreamingTranscriber:
             if new_s < self.MIN_CHUNK_S:
                 continue
             t0 = time.perf_counter()
-            self._pass(audio, start)
+            try:
+                self._pass(audio, start)
+            except Exception as e:  # noqa: BLE001 - one bad pass must never
+                # kill the loop silently (the 2D-frame bug died silently and
+                # every take fell back to batch for a whole day)
+                print(f"[streaming] pass failed ({e.__class__.__name__}: "
+                      f"{e}); continuing", flush=True)
             dt = time.perf_counter() - t0
             self._compute_s += dt
             # adaptive: never let passes consume more than ~50% of wall time
