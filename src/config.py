@@ -35,6 +35,8 @@ class Config:
     emotion_enabled: bool = True        # on by default; lazy background load
     emotion_model: str = "iic/emotion2vec_plus_base"
     tone_tag_threshold: float = 0.60   # below this, emit no tag
+    tone_min_snr_db: float = 6.0       # below this SNR, tone is suppressed
+                                       # (grinder/kitchen/traffic: tone = guess)
 
     # History
     log_takes: bool = True

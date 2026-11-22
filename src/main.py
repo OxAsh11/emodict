@@ -59,34 +59,50 @@ class App:
             print(f"[app] MIC OPEN FAILED: {e}", flush=True)
 
     # ---- pipeline --------------------------------------------------------
+    @staticmethod
+    def _speech_and_snr(audio, segments, sr: int = 16000):
+        """Concatenate only the VAD speech spans, and measure SNR against the
+        noise floor in the gaps. Returns (speech_audio, snr_db)."""
+        import numpy as np
+
+        mask = np.zeros(len(audio), dtype=bool)
+        for s in segments:
+            mask[int(s["start"] * sr):int(s["end"] * sr)] = True
+        speech = audio[mask]
+        if len(speech) < sr // 2:
+            return None, -99.0
+        speech_rms = float(np.sqrt((speech ** 2).mean()))
+        noise = audio[~mask]
+        noise_rms = (float(np.sqrt((noise ** 2).mean()))
+                     if len(noise) > sr // 4 else 1e-6)
+        snr_db = 20.0 * np.log10(speech_rms / (noise_rms + 1e-9))
+        return speech, float(snr_db)
+
     def process(self, audio) -> tuple[str | None, list, list]:
-        """Returns (text, segments, emotions). The two engines run in PARALLEL
-        on the same audio (emotion on CPU, STT on CPU/GPU) - the fork joins
-        before assembly. Gate for both: the take must contain sound."""
+        """Returns (text, segments, emotions). STT first: its VAD tells us
+        WHERE the speech is; emotion then scores the concatenated speech spans
+        only (background-only audio removed), and is suppressed entirely in
+        low-SNR environments (measured noise floor within tone_min_snr_db of
+        the voice - e.g. a mixer grinder - where any tone call is a guess)."""
         import numpy as np
 
         if audio is None or len(audio) == 0:
             return None, [], []
         has_sound = float(np.abs(audio).max()) > 0.01
-
-        emo_box: dict = {}
-        emo_thread = None
-        if has_sound and self.emotion.enabled and self.emotion.model is not None:
-            def _run_emo():
-                # whole take, not per segment: the prosodic signal of desk-voice
-                # frustration lives in the full utterance (measured: angry=0.123
-                # whole vs 0.000-0.009 per segment)
-                emo_box["spans"] = self.emotion.analyze(audio, 16000, None)
-            emo_thread = threading.Thread(target=_run_emo)
-            emo_thread.start()
-
         segments = self.stt.transcribe(audio) if has_sound else []
-        if emo_thread is not None:
-            emo_thread.join(timeout=15)
-        emotions = emo_box.get("spans", [])
-
         if not segments:
-            return None, segments, emotions
+            return None, segments, []
+
+        emotions: list = []
+        speech, snr = self._speech_and_snr(audio, segments)
+        if speech is None:
+            pass  # sub-half-second speech: nothing to judge
+        elif snr < self.cfg.tone_min_snr_db:
+            print(f"[app] noisy environment (SNR {snr:.1f}dB < "
+                  f"{self.cfg.tone_min_snr_db}dB): tone suppressed", flush=True)
+        else:
+            emotions = self.emotion.analyze(speech, 16000, None)
+
         text = self.cleaner.format_output(segments, emotions)
         return (text or None), segments, emotions
 
