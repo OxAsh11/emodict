@@ -101,10 +101,46 @@ class App:
             print(f"[app] noisy environment (SNR {snr:.1f}dB < "
                   f"{self.cfg.tone_min_snr_db}dB): tone suppressed", flush=True)
         else:
-            emotions = self.emotion.analyze(speech, 16000, None)
+            emotions = self._grouped_emotions(audio, segments)
 
         text = self.cleaner.format_output(segments, emotions)
         return (text or None), segments, emotions
+
+    GROUP_MIN_S = 6.0   # merge consecutive sentences up to at least this
+    GROUP_MAX_S = 15.0  # ...but never score more than this per block
+
+    def _grouped_emotions(self, audio, segments) -> list:
+        """Per-block tone: consecutive segments merged into 6-15s prosodic
+        blocks, each scored on its own concatenated speech. Short takes
+        collapse to a single block (whole-take scoring, as measured); long
+        toggle takes get a tone map across the take."""
+        import numpy as np
+
+        groups, cur = [], []
+        for s in segments:
+            if cur and s["end"] - cur[0]["start"] > self.GROUP_MAX_S:
+                groups.append(cur)
+                cur = []
+            cur.append(s)
+            if s["end"] - cur[0]["start"] >= self.GROUP_MIN_S:
+                groups.append(cur)
+                cur = []
+        if cur:
+            groups.append(cur)
+
+        spans = []
+        for g in groups:
+            mask = np.zeros(len(audio), dtype=bool)
+            for s in g:
+                mask[int(s["start"] * 16000):int(s["end"] * 16000)] = True
+            gaudio = audio[mask]
+            if len(gaudio) < 16000 // 2:
+                continue
+            got = self.emotion.analyze(gaudio, 16000, None)
+            if got:
+                spans.append({"start": g[0]["start"], "end": g[-1]["end"],
+                              "label": got[0]["label"], "score": got[0]["score"]})
+        return spans
 
     def _log_take(self, segments, emotions, text: str, elapsed: float | None) -> None:
         if not self.cfg.log_takes:

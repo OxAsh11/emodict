@@ -7,7 +7,7 @@
 Closing the window hides it to the tray; the app keeps running.
 """
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 from . import stats
 
@@ -79,8 +79,25 @@ class MainWindow:
         self._takes = []
         sb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(side="left", fill="both", expand=True, pady=(4, 12))
-        sb.pack(side="left", fill="y", pady=(4, 12))
+        self.tree.pack(side="left", fill="both", expand=True, pady=(4, 2))
+        sb.pack(side="left", fill="y", pady=(4, 2))
+
+        # full-text detail pane: click a row -> complete untruncated text,
+        # selectable and copyable the normal way
+        ttk.Label(mid, text="Full text (select and copy freely):"
+                  ).pack(anchor="w", pady=(8, 2))
+        self.detail = tk.Text(mid, height=5, wrap="word", font=("Segoe UI", 10),
+                              state="disabled", bg="#0b1117", fg="#dbe4ec")
+        self.detail.pack(fill="x", pady=(0, 4))
+        self.tree.bind("<<TreeviewSelect>>", self._show_detail)
+        btnrow = ttk.Frame(mid); btnrow.pack(anchor="e")
+        ttk.Button(btnrow, text="Copy whole take",
+                   command=self._copy_selected).pack(side="right")
+
+        # right-click menu as well
+        self.menu = tk.Menu(self.win, tearoff=0)
+        self.menu.add_command(label="Copy whole take", command=self._copy_selected)
+        self.tree.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
 
     # ---- actions ------------------------------------------------------------
     def _settings(self) -> None:
@@ -125,6 +142,16 @@ class MainWindow:
                              values=(t.ts.strftime("%d %b %H:%M:%S"), lat, tone,
                                      text[:160]))
             shown += 1
+
+    def _show_detail(self, _event=None) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        take = self._takes[int(sel[0])]
+        self.detail.configure(state="normal")
+        self.detail.delete("1.0", "end")
+        self.detail.insert("1.0", take.text or "")
+        self.detail.configure(state="disabled")
 
     def _copy_selected(self, _event=None) -> None:
         """Double-click / Ctrl+C: full take text (untruncated) to clipboard."""
