@@ -14,13 +14,11 @@ datas = [("tools/test_input.wav", "tools"), ("docs/QUICKSTART.md", "docs"),
 # faster_whisper ships its Silero VAD onnx model as package data; without it
 # every transcribe() dies with NoSuchFile in the frozen build.
 datas += collect_data_files("faster_whisper", include_py_files=False)
-# funasr reads its version from version.txt at import, AND some model modules
-# use decorators that inspect their own source (register.py -> inspect
-# getsourcelines) -> ship the .py files as data too or the frozen import dies
+# speechbrain (voice lock) loads model classes dynamically + hyperpyyaml
 datas += collect_data_files("funasr", include_py_files=True)
-# funasr loads model classes dynamically (importlib by registry name) - static
-# analysis misses them, so collect every funasr submodule.
-hiddenimports = collect_submodules("funasr") + ["torchaudio"]
+hiddenimports = (collect_submodules("funasr")
+                 + collect_submodules("speechbrain")
+                 + ["torchaudio", "hyperpyyaml"])
 if gpu:
     for pkg in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_nvrtc"):
         binaries += collect_dynamic_libs(pkg)

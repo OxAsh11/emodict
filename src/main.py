@@ -66,6 +66,9 @@ class App:
         self.emotion = EmotionAnalyzer(cfg.emotion_model, enabled=False)
         if cfg.emotion_enabled:  # big model: load off the startup path
             threading.Thread(target=self._load_emotion, daemon=True).start()
+        from .voice_lock import VoiceLock
+
+        self.voice_lock = VoiceLock()  # armed automatically once enrolled
         self.cleaner = Cleaner(cfg)
         try:
             self.recorder = Recorder(device=cfg.mic_device,
@@ -144,6 +147,22 @@ class App:
             segments = self.stt.transcribe(audio) if has_sound else []
         if not segments:
             return None, segments, []
+
+        # voice lock: keep only segments that match the enrolled voice; other
+        # speakers (TV, radio, people nearby) never reach text or tone
+        if self.voice_lock is not None and self.voice_lock.armed:
+            kept = []
+            for s in segments:
+                i0, i1 = int(s["start"] * 16000), int(s["end"] * 16000)
+                if self.voice_lock.is_me(audio[i0:i1]):
+                    kept.append(s)
+            dropped = len(segments) - len(kept)
+            if dropped:
+                print(f"[voice-lock] dropped {dropped} segment(s) not matching "
+                      f"your voice", flush=True)
+            if not kept:
+                return None, segments, []
+            segments = kept
 
         emotions: list = []
         speech, snr = self._speech_and_snr(audio, segments)
