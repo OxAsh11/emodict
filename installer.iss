@@ -1,8 +1,11 @@
 ; EmoDict installer (Inno Setup). Build:
 ;   ISCC.exe installer.iss            (expects dist\EmoDict-CPU to exist)
-; Version is passed with /DMyVersion=x.y.z or defaults below.
+; Version is passed with /DMyVersion=x.y.z, or read from VERSION.txt below.
 #ifndef MyVersion
-#define MyVersion "0.2.0"
+  #define VersionFile FileOpen(AddBackslash(SourcePath) + "VERSION.txt")
+  #define MyVersion Trim(FileRead(VersionFile))
+  #expr FileClose(VersionFile)
+  #undef VersionFile
 #endif
 
 [Setup]
